@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AdiCraft</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js"
+        }
+    }
+    </script>
+</head>
+<body>
+    <canvas id="game-canvas"></canvas>
+
+    <div id="crosshair">+</div>
+    <div id="water-overlay"></div>
+
+    <div id="hotbar">
+        <div class="hotbar-slot selected" data-slot="0">
+            <div class="hotbar-block" id="hotbar-block-0"></div>
+        </div>
+        <div class="hotbar-slot" data-slot="1">
+            <div class="hotbar-block" id="hotbar-block-1"></div>
+        </div>
+        <div class="hotbar-slot" data-slot="2">
+            <div class="hotbar-block" id="hotbar-block-2"></div>
+        </div>
+        <div class="hotbar-slot" data-slot="3">
+            <div class="hotbar-block" id="hotbar-block-3"></div>
+        </div>
+        <div class="hotbar-slot" data-slot="4">
+            <div class="hotbar-block" id="hotbar-block-4"></div>
+        </div>
+    </div>
+
+    <div id="overlay">
+        <div id="overlay-content">
+            <h1>AdiCraft</h1>
+            <p>Click to Play</p>
+        </div>
+    </div>
+
+    <script type="module" src="js/main.js"></script>
+</body>
+</html>

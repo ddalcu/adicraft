@@ -207,9 +207,39 @@ Here's the magic flow:
 ## What You Need to Run It 🖥️
 
 - A modern web browser (Chrome, Firefox, Safari, Edge)
-- That's it! No installation needed!
+- **Bun** (a fast JavaScript runtime) - [Download here](https://bun.sh)
 
-Just open `index.html` in your browser and start playing!
+### How to Run the Game 🚀
+
+Due to browser security restrictions with ES6 modules, you need to run a local server:
+
+1. **Install Bun** (if you haven't already):
+   ```bash
+   # On macOS/Linux:
+   curl -fsSL https://bun.sh/install | bash
+
+   # On Windows:
+   # Visit https://bun.sh and follow Windows installation instructions
+   ```
+
+2. **Navigate to the game folder** in your terminal:
+   ```bash
+   cd /path/to/adicraft
+   ```
+
+3. **Start the server**:
+   ```bash
+   bun --bun x serve -l 3000
+   ```
+
+4. **Open your browser** and go to:
+   ```
+   http://localhost:3000
+   ```
+
+5. **Start playing!** Click on the page to begin.
+
+**Note**: The game uses JavaScript modules which require a web server. You cannot run it by simply double-clicking `index.html` due to CORS restrictions.
 
 ---
 

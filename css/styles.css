@@ -351,6 +351,27 @@ html, body {
     opacity: 0.8;
 }
 
+.controls-grid {
+    display: grid;
+    grid-template-columns: auto auto;
+    gap: 4px 16px;
+    text-align: left;
+    margin: 16px auto;
+    width: fit-content;
+    font-size: 14px;
+    opacity: 0.7;
+}
+
+.controls-grid .key {
+    text-align: right;
+    font-weight: bold;
+    color: #8f8;
+}
+
+.controls-grid .action {
+    text-align: left;
+}
+
 #overlay-content h2 {
     font-size: 32px;
     margin-bottom: 16px;

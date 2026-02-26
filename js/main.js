@@ -1059,7 +1059,27 @@ async function initGame() {
         info.classList.add('visible-block');
 
         const playText = isMobile ? 'Tap to Play' : 'Click to Play';
-        content.innerHTML = `<h1>AdiCraft</h1><p>${playText}</p>`;
+        const controls = isMobile
+            ? `<div class="controls-grid">
+                <span class="key">Joystick</span><span class="action">Move</span>
+                <span class="key">Drag screen</span><span class="action">Look around</span>
+                <span class="key">JUMP</span><span class="action">Jump / Fly up</span>
+                <span class="key">DOWN</span><span class="action">Fly down</span>
+                <span class="key">ACT</span><span class="action">Break / Shoot</span>
+                <span class="key">MODE</span><span class="action">Toggle gun</span>
+               </div>`
+            : `<div class="controls-grid">
+                <span class="key">WASD</span><span class="action">Move</span>
+                <span class="key">Mouse</span><span class="action">Look around</span>
+                <span class="key">Left Click</span><span class="action">Break block / Shoot</span>
+                <span class="key">Right Click</span><span class="action">Place block</span>
+                <span class="key">Space</span><span class="action">Jump (double-tap: fly)</span>
+                <span class="key">Shift</span><span class="action">Descend while flying</span>
+                <span class="key">1-9</span><span class="action">Select hotbar slot</span>
+                <span class="key">G</span><span class="action">Toggle gun mode</span>
+                <span class="key">T</span><span class="action">Open chat</span>
+               </div>`;
+        content.innerHTML = `<h1>AdiCraft</h1><p>${playText}</p>${controls}`;
         overlay.style.cursor = 'pointer';
 
         // Save state on tab close

@@ -2,8 +2,9 @@ import * as THREE from 'three';
 import { EntityTextureManager } from './EntityTextureManager.js';
 
 export class Entity {
-    constructor(typeDef, position, scene) {
+    constructor(typeDef, position, scene, id) {
         this.type = typeDef;
+        this.id = id || crypto.randomUUID();
         this.position = position.clone();
         this.velocity = new THREE.Vector3(0, 0, 0);
         this.health = typeDef.health;
@@ -90,8 +91,9 @@ export class Entity {
 
     _hostileAI(dt, playerPosition) {
         const dx = playerPosition.x - this.position.x;
+        const dy = playerPosition.y - this.position.y;
         const dz = playerPosition.z - this.position.z;
-        const dist = Math.sqrt(dx * dx + dz * dz);
+        const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
 
         if (dist < this.type.detectRange) {
             // Chase player
@@ -170,6 +172,29 @@ export class Entity {
             } else {
                 mesh.material.color.setHex(mesh.userData.originalColor);
             }
+        }
+    }
+
+    setPositionFromSync(x, y, z, yaw) {
+        this.position.set(x, y, z);
+        if (this.mesh) {
+            this.mesh.position.copy(this.position);
+            this.mesh.rotation.y = yaw;
+        }
+    }
+
+    setHealthFromSync(health) {
+        if (health < this.health && !this.dead) {
+            // Trigger damage flash
+            this.hurtFlashTimer = 0.15;
+            for (const mesh of this._boxMeshes) {
+                mesh.material.color.setHex(0xFF0000);
+            }
+        }
+        this.health = health;
+        if (this.health <= 0 && !this.dead) {
+            this.dead = true;
+            this.dispose();
         }
     }
 

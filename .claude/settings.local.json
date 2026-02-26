@@ -26,7 +26,10 @@
       "mcp__chrome-devtools__close_page",
       "Bash(bun:*)",
       "mcp__chrome-devtools__emulate",
-      "mcp__chrome-devtools__evaluate_script"
+      "mcp__chrome-devtools__evaluate_script",
+      "mcp__deploy__upload-image",
+      "mcp__deploy__deploy",
+      "mcp__deploy__logs"
     ]
   }
 }

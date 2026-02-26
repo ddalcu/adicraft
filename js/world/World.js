@@ -9,6 +9,10 @@ export class World {
         this.chunks = new Map();
         this.terrain = terrainGenerator || new TerrainGenerator(42);
         this.atlas = null;
+
+        // Called when a new chunk is created, before first mesh build
+        // Signature: (cx, cz, chunk) => void
+        this.onChunkLoaded = null;
     }
 
     async init() {
@@ -80,6 +84,9 @@ export class World {
                 if (!this.chunks.has(key)) {
                     const chunk = new Chunk(cx, cz);
                     this.terrain.fillChunk(chunk.blocks, cx, cz);
+                    if (this.onChunkLoaded) {
+                        this.onChunkLoaded(cx, cz, chunk);
+                    }
                     this.chunks.set(key, chunk);
                 }
             }

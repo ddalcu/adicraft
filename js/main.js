@@ -5,7 +5,7 @@ import { World } from './world/World.js';
 import { Player } from './player/Player.js';
 import { BlockInteraction } from './player/BlockInteraction.js';
 import { BLOCK_TYPES } from './world/BlockTypes.js';
-import { PLAYER_EYE_HEIGHT } from './utils/constants.js';
+import { PLAYER_EYE_HEIGHT, CHUNK_SIZE } from './utils/constants.js';
 import { TerrainGenerator } from './world/TerrainGenerator.js';
 import { EndTerrainGenerator, END_TOWERS } from './world/EndTerrainGenerator.js';
 import { OuterEndTerrainGenerator } from './world/OuterEndTerrainGenerator.js';
@@ -18,9 +18,8 @@ import { EndCrystal } from './entities/EndCrystal.js';
 import { placeEndPortal } from './world/Structures.js';
 import { SoundManager } from './audio/SoundManager.js';
 import { EntityTextureManager } from './entities/EntityTextureManager.js';
-import { NetworkManager } from './network/NetworkManager.js';
+import { SyncManager } from './network/SyncManager.js';
 import { RemotePlayer } from './network/RemotePlayer.js';
-import { MSG, encodePos, encodeBlock, encodeBlockReq, encodeJoin, encodeLeave, encodeState } from './network/Protocol.js';
 
 // DOM elements
 const canvas = document.getElementById('game-canvas');
@@ -38,29 +37,36 @@ const input = new InputManager(canvas);
 const hud = new HUD();
 const sound = new SoundManager();
 
-// Multiplayer state
-const network = new NetworkManager();
-const remotePlayers = new Map();
-const blockChanges = []; // Host tracks all block changes for late joiners
-const peerNames = new Map(); // peerId -> name
-let multiplayerMode = null; // null | 'host' | 'client'
+// Sync state
+let syncManager = null;
+const remotePlayers = new Map(); // peerId -> RemotePlayer
 let positionTimer = 0;
+let saveTimer = 0;
 const POSITION_SEND_INTERVAL = 0.05; // 20Hz
+const SAVE_INTERVAL = 5.0; // save player state every 5s
+let playerName = '';
 
 // Dimensions
 const dimManager = new DimensionManager(engine.scene, engine);
 
-// World seed — shared between host and clients
+// World seed
 const WORLD_SEED = 42;
 
 // Create worlds with different terrain generators
-let overworldTerrain = new TerrainGenerator(WORLD_SEED);
+const overworldTerrain = new TerrainGenerator(WORLD_SEED);
 const endTerrain = new EndTerrainGenerator();
 const outerEndTerrain = new OuterEndTerrainGenerator(77777);
 
-let overworldWorld = new World(engine.scene, overworldTerrain);
+const overworldWorld = new World(engine.scene, overworldTerrain);
 const endWorld = new World(engine.scene, endTerrain);
 const outerEndWorld = new World(engine.scene, outerEndTerrain);
+
+// Dimension name -> World instance (for remote block changes)
+const dimensionWorlds = {
+    overworld: overworldWorld,
+    end: endWorld,
+    outer_end: outerEndWorld,
+};
 
 dimManager.register('overworld', overworldWorld, {
     skyColor: 0x87CEEB,
@@ -109,13 +115,15 @@ let weaponMode = false;
 // Chat state
 let chatOpen = false;
 let pinkTimer = 0;
+let isAdmin = false;
+const seenMessageIds = new Set();
 const chatBox = document.getElementById('chat-box');
 const chatInput = document.getElementById('chat-input');
 const chatLog = document.getElementById('chat-log');
 
 function openChat() {
     chatOpen = true;
-    chatBox.classList.add('visible-flex');
+    chatInput.classList.add('visible-block');
     chatInput.value = '';
     chatInput.focus();
     input.enabled = false;
@@ -123,23 +131,235 @@ function openChat() {
 
 function closeChat() {
     chatOpen = false;
-    chatBox.classList.remove('visible-flex');
+    chatInput.classList.remove('visible-block');
     chatInput.blur();
     chatInput.value = '';
     input.enabled = true;
 }
 
-function sendChatMessage(text) {
-    const msg = document.createElement('div');
-    msg.className = 'chat-message';
-    msg.textContent = `<Player> ${text}`;
-    chatLog.appendChild(msg);
-    chatLog.scrollTop = chatLog.scrollHeight;
-    setTimeout(() => msg.remove(), 30000);
+function handleChatSubmit(text) {
+    if (text.startsWith('/')) {
+        handleCommand(text);
+    } else {
+        syncManager.sendChat(playerName, syncManager.playerId, text);
+        // Easter egg: "Bugrock" triggers pink textures
+        if (text.toLowerCase().includes('bugrock')) {
+            triggerBugrock();
+        }
+    }
+}
 
-    // Easter egg: "Bugrock" triggers pink textures
-    if (text.toLowerCase().includes('bugrock')) {
+function displayChatMessage(msg) {
+    if (seenMessageIds.has(msg.id)) return;
+    seenMessageIds.add(msg.id);
+
+    const el = document.createElement('div');
+    el.className = 'chat-message';
+
+    if (msg.system) {
+        el.classList.add('chat-system');
+        el.textContent = msg.text;
+    } else {
+        let nameClass = '';
+        if (syncManager) {
+            if (msg.senderId === syncManager.playerId && isAdmin) {
+                nameClass = 'chat-admin';
+            } else if (syncManager.isOp(msg.senderId)) {
+                nameClass = 'chat-op';
+            }
+        }
+
+        const nameSpan = document.createElement('span');
+        if (nameClass) nameSpan.className = nameClass;
+        nameSpan.textContent = `<${msg.sender}>`;
+
+        el.appendChild(nameSpan);
+        el.appendChild(document.createTextNode(` ${msg.text}`));
+    }
+
+    chatLog.appendChild(el);
+    chatLog.scrollTop = chatLog.scrollHeight;
+    setTimeout(() => el.remove(), 30000);
+
+    // Detect kick messages targeting us
+    if (msg.system && msg.text.startsWith('{')) {
+        try {
+            const data = JSON.parse(msg.text);
+            if (data.type === 'kick' && data.targetId === syncManager?.playerId) {
+                addSystemMessage('You have been kicked from the game.');
+                syncManager.destroy();
+                syncManager = null;
+            }
+        } catch { /* not JSON, ignore */ }
+    }
+
+    // Easter egg on any incoming message
+    if (!msg.system && msg.text.toLowerCase().includes('bugrock')) {
         triggerBugrock();
+    }
+}
+
+function addSystemMessage(text) {
+    const el = document.createElement('div');
+    el.className = 'chat-message chat-system';
+    el.textContent = text;
+    chatLog.appendChild(el);
+    chatLog.scrollTop = chatLog.scrollHeight;
+    setTimeout(() => el.remove(), 30000);
+}
+
+function checkAdmin() {
+    if (!isAdmin) {
+        addSystemMessage('You must be an admin to use this command.');
+        return false;
+    }
+    return true;
+}
+
+function checkAdminOrOp() {
+    if (!isAdmin && !syncManager.isOp(syncManager.playerId)) {
+        addSystemMessage('You must be an admin or op to use this command.');
+        return false;
+    }
+    return true;
+}
+
+function findRemotePlayerByName(name) {
+    const lower = name.toLowerCase();
+    for (const [id, rp] of remotePlayers) {
+        if (rp.name.toLowerCase() === lower) return { id, rp };
+    }
+    // Partial match
+    for (const [id, rp] of remotePlayers) {
+        if (rp.name.toLowerCase().includes(lower)) return { id, rp };
+    }
+    return null;
+}
+
+async function handleCommand(text) {
+    const parts = text.slice(1).split(/\s+/);
+    const cmd = parts[0].toLowerCase();
+    const args = parts.slice(1);
+
+    switch (cmd) {
+        case 'help': {
+            addSystemMessage('--- Commands ---');
+            addSystemMessage('/help - Show this list');
+            addSystemMessage('/clear - Clear chat');
+            addSystemMessage('/setadmin <key> - Set/verify admin key');
+            addSystemMessage('/op <player> - Grant op (admin)');
+            addSystemMessage('/deop <player> - Revoke op (admin)');
+            addSystemMessage('/tp <player> | <x> <y> <z> - Teleport (admin/op)');
+            addSystemMessage('/give <blockId> - Set hotbar slot block (admin/op)');
+            addSystemMessage('/kick <player> - Kick player (admin)');
+            break;
+        }
+        case 'clear': {
+            chatLog.innerHTML = '';
+            seenMessageIds.clear();
+            break;
+        }
+        case 'setadmin': {
+            if (!args[0]) {
+                addSystemMessage('Usage: /setadmin <key>');
+                break;
+            }
+            const secret = args.join(' ');
+            const existingHash = syncManager.getAdminHash();
+
+            if (!existingHash) {
+                // First player to set admin — bootstrap
+                await syncManager.setAdminHash(secret);
+                localStorage.setItem('adicraft-admin-key', secret);
+                isAdmin = true;
+                addSystemMessage('Admin key set. You are now admin.');
+            } else {
+                // Verify against stored hash
+                const valid = await syncManager.verifyAdmin(secret);
+                if (valid) {
+                    localStorage.setItem('adicraft-admin-key', secret);
+                    isAdmin = true;
+                    addSystemMessage('Admin key verified. You are now admin.');
+                } else {
+                    addSystemMessage('Invalid admin key.');
+                }
+            }
+            break;
+        }
+        case 'op': {
+            if (!checkAdmin()) break;
+            if (!args[0]) { addSystemMessage('Usage: /op <player>'); break; }
+            const target = findRemotePlayerByName(args[0]);
+            if (!target) { addSystemMessage(`Player "${args[0]}" not found.`); break; }
+            syncManager.setOp(target.id, target.rp.name);
+            syncManager.sendChat(playerName, syncManager.playerId,
+                `${target.rp.name} is now an operator.`, true);
+            break;
+        }
+        case 'deop': {
+            if (!checkAdmin()) break;
+            if (!args[0]) { addSystemMessage('Usage: /deop <player>'); break; }
+            const target = findRemotePlayerByName(args[0]);
+            if (!target) { addSystemMessage(`Player "${args[0]}" not found.`); break; }
+            syncManager.removeOp(target.id);
+            syncManager.sendChat(playerName, syncManager.playerId,
+                `${target.rp.name} is no longer an operator.`, true);
+            break;
+        }
+        case 'tp': {
+            if (!checkAdminOrOp()) break;
+            if (args.length >= 3) {
+                // /tp <x> <y> <z>
+                const x = parseFloat(args[0]);
+                const y = parseFloat(args[1]);
+                const z = parseFloat(args[2]);
+                if (isNaN(x) || isNaN(y) || isNaN(z)) {
+                    addSystemMessage('Invalid coordinates.');
+                    break;
+                }
+                player.position.set(x, y, z);
+                player.velocity.set(0, 0, 0);
+                addSystemMessage(`Teleported to ${x}, ${y}, ${z}.`);
+            } else if (args[0]) {
+                // /tp <player>
+                const target = findRemotePlayerByName(args[0]);
+                if (!target) { addSystemMessage(`Player "${args[0]}" not found.`); break; }
+                player.position.copy(target.rp.targetPos);
+                player.velocity.set(0, 0, 0);
+                addSystemMessage(`Teleported to ${target.rp.name}.`);
+            } else {
+                addSystemMessage('Usage: /tp <player> or /tp <x> <y> <z>');
+            }
+            break;
+        }
+        case 'give': {
+            if (!checkAdminOrOp()) break;
+            if (!args[0]) { addSystemMessage('Usage: /give <blockId>'); break; }
+            const blockId = parseInt(args[0]);
+            if (isNaN(blockId) || !BLOCK_TYPES[blockId]) {
+                addSystemMessage(`Invalid block ID: ${args[0]}`);
+                break;
+            }
+            hotbarBlocks[interaction.selectedSlot] = blockId;
+            buildHotbarTileCache();
+            updateHotbar();
+            addSystemMessage(`Set current slot to ${BLOCK_TYPES[blockId].name} (${blockId}).`);
+            break;
+        }
+        case 'kick': {
+            if (!checkAdmin()) break;
+            if (!args[0]) { addSystemMessage('Usage: /kick <player>'); break; }
+            const target = findRemotePlayerByName(args[0]);
+            if (!target) { addSystemMessage(`Player "${args[0]}" not found.`); break; }
+            // Send kick as a system message with JSON payload
+            syncManager.sendChat('System', 'system',
+                JSON.stringify({ type: 'kick', targetId: target.id }), true);
+            addSystemMessage(`Kicked ${target.rp.name}.`);
+            break;
+        }
+        default: {
+            addSystemMessage(`Unknown command: /${cmd}. Type /help for commands.`);
+        }
     }
 }
 
@@ -174,7 +394,7 @@ chatInput.addEventListener('keydown', (e) => {
         closeChat();
     } else if (e.key === 'Enter') {
         const text = chatInput.value.trim();
-        if (text) sendChatMessage(text);
+        if (text) handleChatSubmit(text);
         closeChat();
     }
 });
@@ -415,154 +635,136 @@ function checkPortalDetection(dt) {
 }
 
 // =====================
-// Multiplayer Networking
+// Yjs Sync Integration
 // =====================
 
-function setupBlockInteractionNetworking() {
-    if (!multiplayerMode) return;
-
+function setupSync() {
+    // Block changes: write to Yjs + apply locally
     interaction.onBlockChange = (x, y, z, blockId) => {
-        if (multiplayerMode === 'host') {
-            // Host: apply locally and broadcast
-            getWorld().setBlock(x, y, z, blockId);
-            const msg = encodeBlock(x, y, z, blockId);
-            network.send(msg);
-            blockChanges.push({ x, y, z, blockId });
-        } else {
-            // Client: request from host, don't apply locally yet
-            network.send(encodeBlockReq(x, y, z, blockId));
+        const dim = dimManager.getActiveName();
+        getWorld().setBlock(x, y, z, blockId);
+        syncManager.setBlock(dim, x, y, z, blockId);
+    };
+
+    // Remote block changes from other peers or IndexedDB restore
+    syncManager.onRemoteBlockChange = (dim, x, y, z, blockId) => {
+        const world = dimensionWorlds[dim];
+        if (!world) return;
+
+        const cx = Math.floor(x / CHUNK_SIZE);
+        const cz = Math.floor(z / CHUNK_SIZE);
+        const chunk = world.getChunk(cx, cz);
+        if (!chunk) return; // chunk not loaded yet, will be applied via onChunkLoaded
+
+        world.setBlock(x, y, z, blockId);
+    };
+
+    // When a chunk loads, apply persisted block modifications
+    function makeChunkLoadedHandler(dimName) {
+        return (cx, cz, chunk) => {
+            const mods = syncManager.getChunkMods(dimName, cx, cz);
+            if (!mods) return;
+
+            mods.forEach((blockId, coordKey) => {
+                const [wx, wy, wz] = coordKey.split(',').map(Number);
+                const lx = ((wx % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
+                const lz = ((wz % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
+                chunk.setBlock(lx, wy, lz, blockId);
+            });
+        };
+    }
+
+    overworldWorld.onChunkLoaded = makeChunkLoadedHandler('overworld');
+    endWorld.onChunkLoaded = makeChunkLoadedHandler('end');
+    outerEndWorld.onChunkLoaded = makeChunkLoadedHandler('outer_end');
+
+    // Chat: display incoming synced messages
+    syncManager.onChatMessage = (msg) => {
+        displayChatMessage(msg);
+    };
+
+    // Awareness: remote player positions + weapon state + mob sync
+    syncManager.onPeerChange = (states) => {
+        const currentIds = new Set();
+
+        for (const state of states) {
+            currentIds.add(state.id);
+
+            let rp = remotePlayers.get(state.id);
+            if (!rp) {
+                rp = new RemotePlayer(state.id, state.name || 'Player', engine.scene);
+                remotePlayers.set(state.id, rp);
+            }
+            rp.setTarget(state.x, state.y, state.z, state.yaw, state.pitch,
+                state.weaponMode, state.shooting);
         }
+
+        // Remove players who left
+        for (const [id, rp] of remotePlayers) {
+            if (!currentIds.has(id)) {
+                rp.dispose();
+                remotePlayers.delete(id);
+            }
+        }
+
+        updatePlayerCount();
     };
 }
 
-function handleNetworkMessage(data, fromId) {
-    switch (data.type) {
-        case '_hello': {
-            // Host receives client name
-            peerNames.set(fromId, data.name);
+function savePlayerState() {
+    if (!syncManager) return;
+    syncManager.savePlayerState({
+        x: player.position.x,
+        y: player.position.y,
+        z: player.position.z,
+        yaw: player.yaw,
+        pitch: player.pitch,
+        health: player.health,
+        dimension: dimManager.getActiveName(),
+        hotbarSlot: interaction.selectedSlot,
+    });
+}
 
-            // Send state to the new joiner
-            const players = [];
-            // Add host
-            players.push({
-                id: network.playerId,
-                name: network.playerName,
-                x: player.position.x,
-                y: player.position.y,
-                z: player.position.z,
-            });
-            // Add existing remote players
-            for (const [id, rp] of remotePlayers) {
-                players.push({
-                    id,
-                    name: rp.name,
-                    x: rp.targetPos.x,
-                    y: rp.targetPos.y,
-                    z: rp.targetPos.z,
-                });
-            }
+function restorePlayerState() {
+    if (!syncManager) return;
+    const state = syncManager.loadPlayerState();
+    if (!state) return;
 
-            network.sendTo(fromId, encodeState(WORLD_SEED, players, blockChanges));
-
-            // Create remote player for the new joiner
-            const spawnPoint = new THREE.Vector3(8, 64, 8);
-            const rp = new RemotePlayer(fromId, data.name, engine.scene);
-            rp.setTarget(spawnPoint.x, spawnPoint.y, spawnPoint.z, 0, 0);
-            remotePlayers.set(fromId, rp);
-
-            // Broadcast join to all other clients
-            network.sendToAllExcept(fromId, encodeJoin(fromId, data.name, spawnPoint.x, spawnPoint.y, spawnPoint.z));
-
-            const mpUI = document.getElementById('host-info');
-            if (mpUI) {
-                const count = remotePlayers.size + 1;
-                const countEl = document.getElementById('player-count');
-                if (countEl) countEl.textContent = `${count} player${count !== 1 ? 's' : ''}`;
-            }
-            break;
+    // Restore dimension first
+    if (state.dimension && state.dimension !== dimManager.getActiveName()) {
+        dimManager.switchTo(state.dimension, player);
+        if (state.dimension === 'end' && !dragonDefeated) {
+            spawnEndEntities();
         }
+    }
 
-        case MSG.STATE: {
-            // Client receives initial state from host
-            // Apply block changes
-            for (const change of data.blockChanges) {
-                getWorld().setBlock(change.x, change.y, change.z, change.blockId);
-            }
-            // Create remote players for existing players
-            for (const p of data.players) {
-                if (p.id === network.playerId) continue;
-                const rp = new RemotePlayer(p.id, p.name, engine.scene);
-                rp.setTarget(p.x, p.y, p.z, 0, 0);
-                remotePlayers.set(p.id, rp);
-            }
-            break;
-        }
-
-        case MSG.POS: {
-            const rp = remotePlayers.get(data.id);
-            if (rp) rp.setTarget(data.x, data.y, data.z, data.yaw, data.pitch);
-
-            // Host relays position to other clients
-            if (multiplayerMode === 'host') {
-                network.sendToAllExcept(fromId, data);
-            }
-            break;
-        }
-
-        case MSG.BLOCK_REQ: {
-            // Host only: validate and apply, then broadcast
-            if (multiplayerMode === 'host') {
-                getWorld().setBlock(data.x, data.y, data.z, data.blockId);
-                const msg = encodeBlock(data.x, data.y, data.z, data.blockId);
-                network.send(msg);
-                blockChanges.push({ x: data.x, y: data.y, z: data.z, blockId: data.blockId });
-            }
-            break;
-        }
-
-        case MSG.BLOCK: {
-            // Client receives confirmed block change
-            getWorld().setBlock(data.x, data.y, data.z, data.blockId);
-            break;
-        }
-
-        case MSG.JOIN: {
-            const rp = new RemotePlayer(data.id, data.name, engine.scene);
-            rp.setTarget(data.x, data.y, data.z, 0, 0);
-            remotePlayers.set(data.id, rp);
-            break;
-        }
-
-        case MSG.LEAVE: {
-            const rp = remotePlayers.get(data.id);
-            if (rp) rp.dispose();
-            remotePlayers.delete(data.id);
-            break;
-        }
+    // Restore position
+    if (state.x !== undefined) {
+        player.position.set(state.x, state.y, state.z);
+    }
+    if (state.yaw !== undefined) {
+        player.yaw = state.yaw;
+        player.pitch = state.pitch;
+    }
+    if (state.health !== undefined) {
+        player.health = state.health;
+    }
+    if (state.hotbarSlot !== undefined) {
+        interaction.selectedSlot = state.hotbarSlot;
+        interaction.selectedBlockType = hotbarBlocks[state.hotbarSlot];
+        updateHotbar();
     }
 }
 
-function setupNetworkCallbacks() {
-    network.onMessage = handleNetworkMessage;
-
-    network.onPeerLeave = (peerId) => {
-        const rp = remotePlayers.get(peerId);
-        if (rp) rp.dispose();
-        remotePlayers.delete(peerId);
-        peerNames.delete(peerId);
-
-        // Broadcast leave to remaining clients
-        if (multiplayerMode === 'host') {
-            network.send(encodeLeave(peerId));
-            const count = remotePlayers.size + 1;
-            const countEl = document.getElementById('player-count');
-            if (countEl) countEl.textContent = `${count} player${count !== 1 ? 's' : ''}`;
-        }
-    };
+function updatePlayerCount() {
+    const countEl = document.getElementById('player-count');
+    if (!countEl) return;
+    const count = remotePlayers.size + 1;
+    countEl.textContent = `${count} player${count !== 1 ? 's' : ''}`;
 }
 
 // =========================
-// Game Loop (with networking)
+// Game Loop
 // =========================
 
 engine.onUpdate((dt) => {
@@ -607,6 +809,11 @@ engine.onUpdate((dt) => {
     if (input.wasJustPressed('KeyG')) {
         weaponMode = !weaponMode;
         hud.setWeaponMode(weaponMode);
+        if (weaponMode) {
+            weapon.show();
+        } else {
+            weapon.hide();
+        }
     }
 
     player.update(dt);
@@ -699,8 +906,30 @@ engine.onUpdate((dt) => {
     waterOverlay.classList.toggle('visible-block', eyeBlock === 6);
     flyIndicator.classList.toggle('visible-block', player.flying);
 
-    // === Multiplayer: update remote players and send position ===
-    if (multiplayerMode) {
+    // === Sync: update remote players and send position ===
+    if (syncManager) {
+        // Determine authority
+        const isAuth = syncManager.isAuthority();
+        entityManager.authorityMode = isAuth;
+
+        // Authority: process mob damage events from remote players
+        if (isAuth) {
+            const events = syncManager.consumeMobEvents();
+            for (const evt of events) {
+                if (evt.type === 'damage') {
+                    entityManager.applyDamageById(evt.mobId, evt.data);
+                }
+            }
+        }
+
+        // Non-authority: sync mobs from authority's awareness
+        if (!isAuth) {
+            const mobData = syncManager.getAuthorityMobs();
+            if (mobData) {
+                entityManager.syncFromAuthority(mobData);
+            }
+        }
+
         // Update remote player avatars (interpolation)
         for (const [id, rp] of remotePlayers) {
             rp.update(dt);
@@ -710,11 +939,30 @@ engine.onUpdate((dt) => {
         positionTimer += dt;
         if (positionTimer >= POSITION_SEND_INTERVAL) {
             positionTimer = 0;
-            network.send(encodePos(
-                network.playerId,
+
+            const extra = {
+                weaponMode,
+                shooting: weapon.firing ? Date.now() : 0,
+            };
+
+            // Authority includes mob data in awareness
+            if (isAuth && (currentDim === 'overworld' || currentDim === 'outer_end')) {
+                extra.mobs = entityManager.getSerializableMobs();
+            }
+
+            syncManager.updatePosition(
+                playerName,
                 player.position.x, player.position.y, player.position.z,
-                player.yaw, player.pitch
-            ));
+                player.yaw, player.pitch,
+                extra
+            );
+        }
+
+        // Save player state periodically
+        saveTimer += dt;
+        if (saveTimer >= SAVE_INTERVAL) {
+            saveTimer = 0;
+            savePlayerState();
         }
     }
 });
@@ -753,22 +1001,54 @@ async function initGame() {
     engine.start();
 }
 
-// Fixed room ID — everyone joins the same game
-const ROOM_ID = 'adicraft-main';
-const PLAYER_NAME = 'Player-' + Math.random().toString(36).substring(2, 6);
+// ==================
+// Startup
+// ==================
 
 (async () => {
     const content = document.getElementById('overlay-content');
-    content.innerHTML = '<h1>AdiCraft</h1><p>Connecting...</p>';
+    content.innerHTML = '<h1>AdiCraft</h1><p>Loading...</p>';
 
     try {
-        const role = await network.autoJoin(ROOM_ID, PLAYER_NAME);
-        multiplayerMode = role;
+        // Get room and player name from localStorage or defaults
+        const roomId = localStorage.getItem('adicraft-room') || 'adicraft-main';
+        playerName = localStorage.getItem('adicraft-name') || 'Player-' + Math.random().toString(36).substring(2, 6);
 
-        setupNetworkCallbacks();
-        setupBlockInteractionNetworking();
+        // Initialize Yjs sync
+        syncManager = new SyncManager(roomId);
+        setupSync();
+        syncManager.connect();
+
+        // Wire weapon remote hit: non-authority sends damage via mob events
+        weapon.onRemoteHit = (mobId, damage) => {
+            if (syncManager.isAuthority()) {
+                // Authority applies damage directly
+                entityManager.applyDamageById(mobId, damage);
+            } else {
+                syncManager.sendMobEvent(mobId, 'damage', damage);
+            }
+        };
+
+        // On IndexedDB sync: show chat history and re-verify admin key
+        syncManager.indexeddbProvider.once('synced', async () => {
+            const history = syncManager.getChatHistory(20);
+            for (const msg of history) {
+                displayChatMessage(msg);
+            }
+
+            // Re-verify stored admin key
+            const storedKey = localStorage.getItem('adicraft-admin-key');
+            if (storedKey) {
+                const valid = await syncManager.verifyAdmin(storedKey);
+                isAdmin = valid;
+                if (valid) addSystemMessage('Admin session restored.');
+            }
+        });
 
         await initGame();
+
+        // Restore player state from previous session
+        restorePlayerState();
 
         // Show player info in top-right
         let info = document.getElementById('host-info');
@@ -777,15 +1057,20 @@ const PLAYER_NAME = 'Player-' + Math.random().toString(36).substring(2, 6);
             info.id = 'host-info';
             document.body.appendChild(info);
         }
-        const roleLabel = role === 'host' ? 'Hosting' : 'Connected';
-        info.innerHTML = `<span class="host-info-label">${roleLabel}</span> <span id="player-count">1 player</span>`;
+        info.innerHTML = `<span class="host-info-label">${playerName}</span> <span id="player-count">1 player</span>`;
         info.classList.add('visible-block');
 
         const playText = isMobile ? 'Tap to Play' : 'Click to Play';
         content.innerHTML = `<h1>AdiCraft</h1><p>${playText}</p>`;
         overlay.style.cursor = 'pointer';
+
+        // Save state on tab close
+        window.addEventListener('beforeunload', () => {
+            savePlayerState();
+        });
     } catch (err) {
-        content.innerHTML = `<h2>Connection Error</h2><p>${err.message}</p>`;
+        console.error('Init error:', err);
+        content.innerHTML = `<h2>Error</h2><p>${err.message}</p>`;
         const retryBtn = document.createElement('button');
         retryBtn.className = 'mp-btn';
         retryBtn.textContent = 'Retry';

@@ -26,12 +26,49 @@ export class RemotePlayer {
         this.nameTag.position.y = 2.0;
         this.group.add(this.nameTag);
 
+        // Gun mesh (hidden by default)
+        this.gunMesh = this._buildRemoteGun();
+        this.gunMesh.visible = false;
+        this.group.add(this.gunMesh);
+
+        // Muzzle flash for remote gun
+        const flashGeo = new THREE.SphereGeometry(0.08, 6, 6);
+        const flashMat = new THREE.MeshBasicMaterial({
+            color: 0xFFFF44, transparent: true, opacity: 0,
+        });
+        this.remoteFlash = new THREE.Mesh(flashGeo, flashMat);
+        this.remoteFlash.position.set(-0.4, 1.1, -0.5);
+        this.group.add(this.remoteFlash);
+        this.flashTimer = 0;
+
         scene.add(this.group);
 
         // Interpolation targets
         this.targetPos = new THREE.Vector3();
         this.targetYaw = 0;
         this.targetPitch = 0;
+        this._lastShooting = 0;
+    }
+
+    _buildRemoteGun() {
+        const gun = new THREE.Group();
+        const darkMetal = new THREE.MeshLambertMaterial({ color: 0x3a3a3a });
+        const brass = new THREE.MeshLambertMaterial({ color: 0xBB8833 });
+
+        const body = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.07, 0.3), darkMetal);
+        gun.add(body);
+
+        const barrel = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.02, 0.02, 0.2, 4),
+            brass
+        );
+        barrel.rotation.x = Math.PI / 2;
+        barrel.position.z = -0.2;
+        gun.add(barrel);
+
+        // Position at right hand
+        gun.position.set(-0.4, 1.0, -0.2);
+        return gun;
     }
 
     _createNameTag(name) {
@@ -56,10 +93,21 @@ export class RemotePlayer {
         return sprite;
     }
 
-    setTarget(x, y, z, yaw, pitch) {
+    setTarget(x, y, z, yaw, pitch, weaponMode, shooting) {
         this.targetPos.set(x, y, z);
         this.targetYaw = yaw;
         this.targetPitch = pitch;
+
+        if (weaponMode !== undefined) {
+            this.gunMesh.visible = !!weaponMode;
+        }
+
+        // Detect new shots by comparing timestamps
+        if (shooting && shooting !== this._lastShooting) {
+            this._lastShooting = shooting;
+            this.flashTimer = 0.08;
+            this.remoteFlash.material.opacity = 1;
+        }
     }
 
     update(dt) {
@@ -67,6 +115,12 @@ export class RemotePlayer {
         this.group.position.lerp(this.targetPos, lerpFactor);
         this.group.rotation.y = this._lerpAngle(this.group.rotation.y, this.targetYaw, lerpFactor);
         this.head.rotation.x = this._lerpAngle(this.head.rotation.x, this.targetPitch, lerpFactor);
+
+        // Fade muzzle flash
+        if (this.flashTimer > 0) {
+            this.flashTimer -= dt;
+            this.remoteFlash.material.opacity = Math.max(0, this.flashTimer / 0.08);
+        }
     }
 
     _lerpAngle(from, to, t) {

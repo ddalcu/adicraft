@@ -14,10 +14,22 @@ export class EntityManager {
         this.entities = [];
         this.spawnTimer = 0;
         this.currentDimension = 'overworld';
+        this.authorityMode = true;
         this.onMobDrop = null; // callback(blockId, x, y, z) when mob drops an item
     }
 
     update(dt, playerPosition) {
+        if (!this.authorityMode) {
+            // Non-authority: only tick hurt flash timers for visual feedback
+            for (const entity of this.entities) {
+                if (entity.hurtFlashTimer > 0) {
+                    entity.hurtFlashTimer -= dt;
+                    if (entity.hurtFlashTimer <= 0) entity._resetColors();
+                }
+            }
+            return;
+        }
+
         const world = this.getWorld();
 
         // Update existing entities
@@ -130,6 +142,67 @@ export class EntityManager {
             }
         }
         return totalDamage;
+    }
+
+    getSerializableMobs() {
+        const mobs = [];
+        for (const entity of this.entities) {
+            if (entity.dead) continue;
+            // Find mob type key for reconstruction on remote
+            let typeKey = null;
+            for (const [key, def] of Object.entries(MOB_TYPES)) {
+                if (def === entity.type) { typeKey = key; break; }
+            }
+            if (!typeKey) continue;
+            mobs.push({
+                id: entity.id,
+                type: typeKey,
+                x: entity.position.x,
+                y: entity.position.y,
+                z: entity.position.z,
+                yaw: entity.mesh ? entity.mesh.rotation.y : 0,
+                health: entity.health,
+            });
+        }
+        return mobs;
+    }
+
+    syncFromAuthority(mobDataArray) {
+        const remoteIds = new Set();
+
+        for (const data of mobDataArray) {
+            remoteIds.add(data.id);
+            let entity = this.entities.find(e => e.id === data.id);
+
+            if (!entity) {
+                // Create new entity matching authority
+                const typeDef = MOB_TYPES[data.type];
+                if (!typeDef) continue;
+                const pos = new THREE.Vector3(data.x, data.y, data.z);
+                entity = new Entity(typeDef, pos, this.scene, data.id);
+                entity.health = data.health;
+                this.entities.push(entity);
+            }
+
+            entity.setPositionFromSync(data.x, data.y, data.z, data.yaw);
+            entity.setHealthFromSync(data.health);
+        }
+
+        // Remove entities that authority no longer has
+        this.entities = this.entities.filter(entity => {
+            if (!remoteIds.has(entity.id)) {
+                entity.dispose();
+                return false;
+            }
+            return true;
+        });
+    }
+
+    applyDamageById(mobId, amount) {
+        const entity = this.entities.find(e => e.id === mobId);
+        if (entity && !entity.dead) {
+            entity.takeDamage(amount);
+        }
     }
 
     disposeAll() {

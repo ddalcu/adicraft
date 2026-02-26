@@ -257,9 +257,9 @@ html, body {
     left: 20px;
     width: 350px;
     z-index: 30;
-    display: none;
+    display: flex;
     flex-direction: column;
-    pointer-events: auto;
+    pointer-events: none;
 }
 
 #chat-log {
@@ -281,6 +281,8 @@ html, body {
     background: rgba(0, 0, 0, 0.7);
     border: 1px solid rgba(255, 255, 255, 0.3);
     outline: none;
+    display: none;
+    pointer-events: auto;
 }
 
 #chat-input:focus {
@@ -290,6 +292,21 @@ html, body {
 .chat-message {
     padding: 2px 0;
     word-wrap: break-word;
+}
+
+.chat-system {
+    color: #FFD700;
+    font-style: italic;
+}
+
+.chat-admin {
+    color: #FF4444;
+    font-weight: bold;
+}
+
+.chat-op {
+    color: #4CAF50;
+    font-weight: bold;
 }
 
 .hidden {

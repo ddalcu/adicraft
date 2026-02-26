@@ -18,6 +18,8 @@ export class GameEngine {
             NEAR_PLANE,
             FAR_PLANE
         );
+        // Add camera to scene so children (e.g. weapon model) render correctly
+        this.scene.add(this.camera);
 
         this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false });
         this.renderer.setSize(window.innerWidth, window.innerHeight);

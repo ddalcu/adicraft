@@ -1,30 +1,73 @@
 import * as THREE from 'three';
 import {
-    MOUSE_SENSITIVITY, MAX_PITCH, MOVE_SPEED, JUMP_VELOCITY,
-    GRAVITY, PLAYER_HEIGHT, PLAYER_WIDTH, PLAYER_EYE_HEIGHT, CHUNK_HEIGHT
+    MOUSE_SENSITIVITY, MAX_PITCH, MOVE_SPEED, FLY_SPEED, JUMP_VELOCITY,
+    GRAVITY, PLAYER_HEIGHT, PLAYER_WIDTH, PLAYER_EYE_HEIGHT, CHUNK_HEIGHT,
+    DOUBLE_TAP_WINDOW
 } from '../utils/constants.js';
 import { isSolid } from '../world/BlockTypes.js';
 
 export class Player {
-    constructor(camera, input, world) {
+    constructor(camera, input, getWorld, sound) {
         this.camera = camera;
         this.input = input;
-        this.world = world;
+        this.getWorld = getWorld;
+        this.sound = sound;
 
-        this.position = new THREE.Vector3(8, CHUNK_HEIGHT, 8);
+        this.spawnPosition = new THREE.Vector3(8, CHUNK_HEIGHT, 8);
+        this.position = this.spawnPosition.clone();
         this.velocity = new THREE.Vector3(0, 0, 0);
         this.yaw = 0;
         this.pitch = 0;
         this.onGround = false;
+        this.flying = false;
+        this._lastSpacePressTime = 0;
 
         this.halfWidth = PLAYER_WIDTH / 2;
+
+        // Health
+        this.maxHealth = 20;
+        this.health = this.maxHealth;
+        this.dead = false;
+        this.invulnTimer = 0; // brief invulnerability after hit
+    }
+
+    get world() {
+        return this.getWorld();
     }
 
     update(dt) {
+        if (this.dead) return;
+
+        this.invulnTimer = Math.max(0, this.invulnTimer - dt);
+
         this._handleMouseLook();
         this._handleMovement(dt);
         this._applyPhysics(dt);
         this._updateCamera();
+    }
+
+    takeDamage(amount, hud) {
+        if (this.dead || this.invulnTimer > 0) return;
+        this.health -= amount;
+        this.invulnTimer = 0.5;
+
+        if (this.sound) this.sound.playHurt();
+        if (hud) hud.showDamageFlash();
+
+        if (this.health <= 0) {
+            this.health = 0;
+            this.dead = true;
+            if (hud) hud.showDeathScreen();
+        }
+    }
+
+    respawn(hud) {
+        this.position.copy(this.spawnPosition);
+        this.velocity.set(0, 0, 0);
+        this.health = this.maxHealth;
+        this.dead = false;
+        this.invulnTimer = 1.0;
+        if (hud) hud.hideDeathScreen();
     }
 
     _handleMouseLook() {
@@ -35,6 +78,20 @@ export class Player {
     }
 
     _handleMovement(dt) {
+        // Double-tap Space to toggle fly mode
+        if (this.input.wasJustPressed('Space')) {
+            const now = performance.now();
+            if (now - this._lastSpacePressTime < DOUBLE_TAP_WINDOW) {
+                this.flying = !this.flying;
+                this.velocity.y = 0;
+                this._lastSpacePressTime = 0;
+            } else {
+                this._lastSpacePressTime = now;
+            }
+        }
+
+        const speed = this.flying ? FLY_SPEED : MOVE_SPEED;
+
         const forward = new THREE.Vector3(
             -Math.sin(this.yaw),
             0,
@@ -57,17 +114,29 @@ export class Player {
             moveDir.normalize();
         }
 
-        this.velocity.x = moveDir.x * MOVE_SPEED;
-        this.velocity.z = moveDir.z * MOVE_SPEED;
+        this.velocity.x = moveDir.x * speed;
+        this.velocity.z = moveDir.z * speed;
 
-        if (this.input.isKeyDown('Space') && this.onGround) {
+        if (this.flying) {
+            let vy = 0;
+            if (this.input.isKeyDown('Space')) vy += FLY_SPEED;
+            if (this.input.isKeyDown('ShiftLeft') || this.input.isKeyDown('ShiftRight')) vy -= FLY_SPEED;
+            this.velocity.y = vy;
+        } else if (this.input.isKeyDown('Space') && this.onGround) {
             this.velocity.y = JUMP_VELOCITY;
             this.onGround = false;
+            if (this.sound) this.sound.playJump();
         }
+
+        // Footstep sounds when walking on ground
+        const isWalking = !this.flying && this.onGround && moveDir.lengthSq() > 0;
+        if (this.sound) this.sound.updateWalking(dt, isWalking);
     }
 
     _applyPhysics(dt) {
-        this.velocity.y -= GRAVITY * dt;
+        if (!this.flying) {
+            this.velocity.y -= GRAVITY * dt;
+        }
         this.onGround = false;
 
         // Move and resolve each axis independently
@@ -88,6 +157,7 @@ export class Player {
     }
 
     _resolveAxis(axis) {
+        const world = this.world;
         const min = new THREE.Vector3(
             this.position.x - this.halfWidth,
             this.position.y,
@@ -109,7 +179,7 @@ export class Player {
         for (let bx = startX; bx <= endX; bx++) {
             for (let by = startY; by <= endY; by++) {
                 for (let bz = startZ; bz <= endZ; bz++) {
-                    const block = this.world.getBlock(bx, by, bz);
+                    const block = world.getBlock(bx, by, bz);
                     if (!isSolid(block)) continue;
 
                     // Block AABB is [bx, bx+1] x [by, by+1] x [bz, bz+1]

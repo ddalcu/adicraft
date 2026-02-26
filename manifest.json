@@ -1,0 +1,16 @@
+{
+    "name": "AdiCraft",
+    "short_name": "AdiCraft",
+    "start_url": ".",
+    "display": "fullscreen",
+    "orientation": "landscape",
+    "background_color": "#000000",
+    "theme_color": "#4CAF50",
+    "icons": [
+        {
+            "src": "texturepacks/Default/assets/grass_side.png",
+            "sizes": "16x16",
+            "type": "image/png"
+        }
+    ]
+}

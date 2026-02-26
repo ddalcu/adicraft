@@ -2,7 +2,12 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="theme-color" content="#4CAF50">
+    <link rel="manifest" href="manifest.json">
     <title>AdiCraft</title>
     <link rel="stylesheet" href="css/styles.css">
     <script type="importmap">
@@ -12,12 +17,45 @@
         }
     }
     </script>
+    <script src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js"></script>
 </head>
 <body>
     <canvas id="game-canvas"></canvas>
 
     <div id="crosshair">+</div>
+    <div id="fly-indicator">Flying</div>
     <div id="water-overlay"></div>
+
+    <!-- Health bar -->
+    <div id="health-container">
+        <div id="health-bar"></div>
+        <span id="health-text">20/20</span>
+    </div>
+
+    <!-- Damage flash overlay -->
+    <div id="damage-overlay"></div>
+
+    <!-- Weapon mode indicator -->
+    <div id="weapon-indicator">BUILD</div>
+
+    <!-- Boss health bar -->
+    <div id="boss-bar">
+        <span id="boss-bar-name">Ender Dragon</span>
+        <div id="boss-bar-track">
+            <div id="boss-bar-fill"></div>
+        </div>
+    </div>
+
+    <!-- Death screen -->
+    <div id="death-overlay">
+        <div id="death-content">
+            <h1>You Died!</h1>
+            <p id="death-respawn-text">Press R to respawn</p>
+        </div>
+    </div>
+
+    <!-- Victory message -->
+    <div id="victory-message"></div>
 
     <div id="hotbar">
         <div class="hotbar-slot selected" data-slot="0">
@@ -41,6 +79,20 @@
         <div id="overlay-content">
             <h1>AdiCraft</h1>
             <p>Click to Play</p>
+        </div>
+    </div>
+
+    <!-- Touch controls (mobile only, shown via JS) -->
+    <div id="touch-controls">
+        <div id="touch-joystick">
+            <div id="touch-joystick-base"></div>
+            <div id="touch-joystick-knob"></div>
+        </div>
+        <div id="touch-buttons">
+            <button id="touch-mode" class="touch-btn">MODE</button>
+            <button id="touch-jump" class="touch-btn">JUMP</button>
+            <button id="touch-descend" class="touch-btn">DOWN</button>
+            <button id="touch-action" class="touch-btn">ACT</button>
         </div>
     </div>
 

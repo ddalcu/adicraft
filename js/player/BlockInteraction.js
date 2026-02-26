@@ -3,11 +3,12 @@ import { REACH_DISTANCE } from '../utils/constants.js';
 import { isSolid } from '../world/BlockTypes.js';
 
 export class BlockInteraction {
-    constructor(camera, world, scene, input) {
+    constructor(camera, getWorld, scene, input, sound) {
         this.camera = camera;
-        this.world = world;
+        this.getWorld = getWorld;
         this.scene = scene;
         this.input = input;
+        this.sound = sound;
 
         this.selectedSlot = 0;
         this.selectedBlockType = 1; // grass
@@ -19,6 +20,13 @@ export class BlockInteraction {
 
         this.targetBlock = null;
         this.targetNormal = null;
+
+        // Network callback: if set, block changes route through this instead of direct world.setBlock
+        this.onBlockChange = null;
+    }
+
+    get world() {
+        return this.getWorld();
     }
 
     _createHighlight() {
@@ -45,6 +53,7 @@ export class BlockInteraction {
     }
 
     _raycast() {
+        const world = this.world;
         // DDA voxel traversal
         const origin = this.camera.position.clone();
         const direction = new THREE.Vector3(0, 0, -1);
@@ -80,7 +89,7 @@ export class BlockInteraction {
         this.highlight.visible = false;
 
         while (t < REACH_DISTANCE) {
-            const block = this.world.getBlock(x, y, z);
+            const block = world.getBlock(x, y, z);
             if (isSolid(block)) {
                 this.targetBlock = { x, y, z };
                 this.targetNormal = { x: normalX, y: normalY, z: normalZ };
@@ -120,7 +129,12 @@ export class BlockInteraction {
     _breakBlock() {
         if (!this.targetBlock) return;
         const { x, y, z } = this.targetBlock;
-        this.world.setBlock(x, y, z, 0);
+        if (this.onBlockChange) {
+            this.onBlockChange(x, y, z, 0);
+        } else {
+            this.world.setBlock(x, y, z, 0);
+        }
+        if (this.sound) this.sound.playBlockBreak();
     }
 
     _placeBlock() {
@@ -145,6 +159,11 @@ export class BlockInteraction {
             return;
         }
 
-        this.world.setBlock(px, py, pz, this.selectedBlockType);
+        if (this.onBlockChange) {
+            this.onBlockChange(px, py, pz, this.selectedBlockType);
+        } else {
+            this.world.setBlock(px, py, pz, this.selectedBlockType);
+        }
+        if (this.sound) this.sound.playBlockPlace();
     }
 }

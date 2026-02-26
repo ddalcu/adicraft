@@ -4,16 +4,21 @@ import { TerrainGenerator } from './TerrainGenerator.js';
 import { TextureAtlas } from '../utils/TextureAtlas.js';
 
 export class World {
-    constructor(scene) {
+    constructor(scene, terrainGenerator) {
         this.scene = scene;
         this.chunks = new Map();
-        this.terrain = new TerrainGenerator(42);
+        this.terrain = terrainGenerator || new TerrainGenerator(42);
         this.atlas = null;
     }
 
     async init() {
         this.atlas = new TextureAtlas();
         await this.atlas.load('texturepacks/Default/assets/minecraft/textures');
+    }
+
+    // Share atlas from another world (avoids loading textures twice)
+    shareAtlas(atlas) {
+        this.atlas = atlas;
     }
 
     _chunkKey(cx, cz) {
@@ -118,5 +123,15 @@ export class World {
 
             buildsThisFrame++;
         }
+    }
+
+    unloadAll() {
+        for (const [key, chunk] of this.chunks) {
+            if (chunk.mesh) {
+                this.scene.remove(chunk.mesh);
+            }
+            chunk.dispose();
+        }
+        this.chunks.clear();
     }
 }

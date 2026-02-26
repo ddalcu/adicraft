@@ -1,7 +1,7 @@
 // World
 export const CHUNK_SIZE = 16;
 export const CHUNK_HEIGHT = 64;
-export const RENDER_DISTANCE = 6;
+export const RENDER_DISTANCE = 12;
 export const MAX_CHUNK_BUILDS_PER_FRAME = 2;
 
 // Terrain
@@ -15,8 +15,10 @@ export const PLAYER_HEIGHT = 1.62;
 export const PLAYER_WIDTH = 0.6;
 export const PLAYER_EYE_HEIGHT = 1.52;
 export const MOVE_SPEED = 5.0;
+export const FLY_SPEED = 30.0;
 export const JUMP_VELOCITY = 8.0;
 export const GRAVITY = 20.0;
+export const DOUBLE_TAP_WINDOW = 300;
 export const MOUSE_SENSITIVITY = 0.002;
 export const MAX_PITCH = Math.PI / 2 - 0.01;
 

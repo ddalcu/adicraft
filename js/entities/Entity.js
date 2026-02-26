@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { EntityTextureManager } from './EntityTextureManager.js';
 
 export class Entity {
     constructor(typeDef, position, scene) {
@@ -26,12 +27,35 @@ export class Entity {
         const group = new THREE.Group();
         this._boxMeshes = [];
 
+        const texture = this.type.texture
+            ? EntityTextureManager.getTexture(this.type.texture)
+            : null;
+
         for (const box of this.type.boxes) {
             const geo = new THREE.BoxGeometry(box.size[0], box.size[1], box.size[2]);
-            const mat = new THREE.MeshLambertMaterial({ color: box.color });
+            let mat;
+
+            if (texture && this.type.fullTexture) {
+                // Full texture mode: map entire texture to each face (nextbot style)
+                mat = new THREE.MeshLambertMaterial({ map: texture });
+            } else if (texture && box.uv && this.type.textureSize) {
+                const [texW, texH] = this.type.textureSize;
+                const faceUVs = EntityTextureManager.minecraftBoxUV(
+                    box.uv.u, box.uv.v, box.uv.w, box.uv.h, box.uv.d
+                );
+                EntityTextureManager.applyBoxUVs(geo, texW, texH, faceUVs);
+                mat = new THREE.MeshLambertMaterial({
+                    map: texture,
+                    alphaTest: 0.1,
+                });
+            } else {
+                mat = new THREE.MeshLambertMaterial({ color: box.color });
+            }
+
             const mesh = new THREE.Mesh(geo, mat);
             mesh.position.set(box.offset[0], box.offset[1], box.offset[2]);
             mesh.userData.originalColor = box.color;
+            mesh.userData.hasTexture = !!texture;
             group.add(mesh);
             this._boxMeshes.push(mesh);
         }
@@ -141,7 +165,11 @@ export class Entity {
 
     _resetColors() {
         for (const mesh of this._boxMeshes) {
-            mesh.material.color.setHex(mesh.userData.originalColor);
+            if (mesh.userData.hasTexture) {
+                mesh.material.color.setHex(0xFFFFFF);
+            } else {
+                mesh.material.color.setHex(mesh.userData.originalColor);
+            }
         }
     }
 
@@ -188,8 +216,9 @@ export class Entity {
     canAttackPlayer(playerPosition) {
         if (!this.type.hostile || this.attackCooldown > 0 || this.dead) return false;
         const dx = playerPosition.x - this.position.x;
+        const dy = playerPosition.y - this.position.y;
         const dz = playerPosition.z - this.position.z;
-        return Math.sqrt(dx * dx + dz * dz) < this.type.attackRange;
+        return Math.sqrt(dx * dx + dy * dy + dz * dz) < this.type.attackRange;
     }
 
     getAttackDamage() {

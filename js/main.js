@@ -17,6 +17,7 @@ import { Dragon } from './entities/Dragon.js';
 import { EndCrystal } from './entities/EndCrystal.js';
 import { placeEndPortal } from './world/Structures.js';
 import { SoundManager } from './audio/SoundManager.js';
+import { EntityTextureManager } from './entities/EntityTextureManager.js';
 import { NetworkManager } from './network/NetworkManager.js';
 import { RemotePlayer } from './network/RemotePlayer.js';
 import { MSG, encodePos, encodeBlock, encodeBlockReq, encodeJoin, encodeLeave, encodeState } from './network/Protocol.js';
@@ -87,8 +88,17 @@ const getWorld = () => dimManager.getActiveWorld();
 const player = new Player(engine.camera, input, getWorld, sound);
 const interaction = new BlockInteraction(engine.camera, getWorld, engine.scene, input, sound);
 
-// Entity manager (overworld mobs)
+// Entity manager (overworld + outer end mobs)
 const entityManager = new EntityManager(engine.scene, getWorld);
+
+// Waystone teleport state
+let waystonePos = null;
+
+// Mob drops: place dropped block at death position
+entityManager.onMobDrop = (blockId, x, y, z) => {
+    const world = getWorld();
+    world.setBlock(x, y, z, blockId);
+};
 
 // Weapon system
 const weapon = new Weapon(engine.camera, engine.scene, entityManager, sound);
@@ -96,34 +106,120 @@ const weapon = new Weapon(engine.camera, engine.scene, entityManager, sound);
 // Weapon mode toggle
 let weaponMode = false;
 
+// Chat state
+let chatOpen = false;
+let pinkTimer = 0;
+const chatBox = document.getElementById('chat-box');
+const chatInput = document.getElementById('chat-input');
+const chatLog = document.getElementById('chat-log');
+
+function openChat() {
+    chatOpen = true;
+    chatBox.classList.add('visible-flex');
+    chatInput.value = '';
+    chatInput.focus();
+    input.enabled = false;
+}
+
+function closeChat() {
+    chatOpen = false;
+    chatBox.classList.remove('visible-flex');
+    chatInput.blur();
+    chatInput.value = '';
+    input.enabled = true;
+}
+
+function sendChatMessage(text) {
+    const msg = document.createElement('div');
+    msg.className = 'chat-message';
+    msg.textContent = `<Player> ${text}`;
+    chatLog.appendChild(msg);
+    chatLog.scrollTop = chatLog.scrollHeight;
+    setTimeout(() => msg.remove(), 30000);
+
+    // Easter egg: "Bugrock" triggers pink textures
+    if (text.toLowerCase().includes('bugrock')) {
+        triggerBugrock();
+    }
+}
+
+function triggerBugrock() {
+    pinkTimer = 5.0;
+    const atlas = overworldWorld.atlas;
+    if (atlas && atlas.material) {
+        atlas.material.color.setHex(0xFF69B4);
+    }
+    for (const entity of entityManager.entities) {
+        if (!entity._boxMeshes) continue;
+        for (const mesh of entity._boxMeshes) {
+            mesh.material.color.setHex(0xFF69B4);
+        }
+    }
+}
+
+function resetTextures() {
+    const atlas = overworldWorld.atlas;
+    if (atlas && atlas.material) {
+        atlas.material.color.setHex(0xFFFFFF);
+    }
+    for (const entity of entityManager.entities) {
+        if (entity._resetColors) entity._resetColors();
+    }
+}
+
+chatInput.addEventListener('keydown', (e) => {
+    e.stopPropagation();
+    if (e.key === 'Shift' || e.key === 'Escape') {
+        e.preventDefault();
+        closeChat();
+    } else if (e.key === 'Enter') {
+        const text = chatInput.value.trim();
+        if (text) sendChatMessage(text);
+        closeChat();
+    }
+});
+
 // End dimension entities
 let endCrystals = [];
 let dragon = null;
 let dragonDefeated = false;
 
-// Hotbar setup
-const hotbarBlocks = [1, 2, 3, 4, 5]; // grass, dirt, stone, wood, leaves
+// Hotbar setup — 9 slots like Minecraft
+const hotbarBlocks = [1, 2, 3, 4, 5, 7, 24, 25, 32];
+// grass, dirt, stone, wood, leaves, sand, end_stone_bricks, purpur_block, waystone
 const hotbarSlots = document.querySelectorAll('.hotbar-slot');
 const hotbarBlockEls = document.querySelectorAll('.hotbar-block');
 
-const blockColorClasses = {
-    1: 'block-color-grass',
-    2: 'block-color-dirt',
-    3: 'block-color-stone',
-    4: 'block-color-wood',
-    5: 'block-color-leaves'
-};
+// Cache for hotbar tile data URLs (populated after atlas loads)
+const hotbarTileCache = new Map();
 
 function updateHotbar() {
     hotbarSlots.forEach((slot, i) => {
         slot.classList.toggle('selected', i === interaction.selectedSlot);
     });
     hotbarBlockEls.forEach((el, i) => {
-        Object.values(blockColorClasses).forEach(cls => el.classList.remove(cls));
-        const cls = blockColorClasses[hotbarBlocks[i]];
-        if (cls) el.classList.add(cls);
+        const blockId = hotbarBlocks[i];
+        if (hotbarTileCache.has(blockId)) {
+            el.style.backgroundImage = `url(${hotbarTileCache.get(blockId)})`;
+        } else {
+            // Fallback: use topColor from block type
+            const bt = BLOCK_TYPES[blockId];
+            if (bt) el.style.backgroundColor = bt.topColor;
+        }
     });
 }
+
+function buildHotbarTileCache() {
+    const atlas = overworldWorld.atlas;
+    if (!atlas || !atlas._canvas) return;
+    for (const blockId of hotbarBlocks) {
+        const bt = BLOCK_TYPES[blockId];
+        if (!bt) continue;
+        const { col, row } = bt.topUV;
+        hotbarTileCache.set(blockId, atlas.getTileDataURL(col, row));
+    }
+}
+
 updateHotbar();
 
 // Mobile detection
@@ -247,10 +343,10 @@ if (isMobile) {
     });
 }
 
-// Number keys for block selection
+// Number keys for block selection (1-9)
 document.addEventListener('keydown', (e) => {
     const num = parseInt(e.key);
-    if (num >= 1 && num <= 5) {
+    if (num >= 1 && num <= 9) {
         interaction.selectedSlot = num - 1;
         interaction.selectedBlockType = hotbarBlocks[num - 1];
         updateHotbar();
@@ -313,6 +409,7 @@ function checkPortalDetection(dt) {
             dimManager.switchTo('overworld', player);
         }
     } else if (currentDim === 'outer_end') {
+        entityManager.disposeAll();
         dimManager.switchTo('overworld', player);
     }
 }
@@ -469,6 +566,31 @@ function setupNetworkCallbacks() {
 // =========================
 
 engine.onUpdate((dt) => {
+    // Pink texture effect timer (ticks even during chat)
+    if (pinkTimer > 0) {
+        pinkTimer -= dt;
+        // Re-pink newly spawned entities
+        for (const entity of entityManager.entities) {
+            if (!entity._boxMeshes) continue;
+            for (const mesh of entity._boxMeshes) {
+                mesh.material.color.setHex(0xFF69B4);
+            }
+        }
+        if (pinkTimer <= 0) {
+            resetTextures();
+        }
+    }
+
+    // Chat: open on T, skip game logic while open
+    if (!chatOpen && input.wasJustPressed('KeyT')) {
+        openChat();
+        return;
+    }
+    if (chatOpen) {
+        hud.update(dt);
+        return;
+    }
+
     // Handle respawn
     if (player.dead) {
         if (input.wasJustPressed('KeyR')) {
@@ -503,6 +625,14 @@ engine.onUpdate((dt) => {
         weapon.extraTargets = [];
     }
 
+    // Waystone teleport: if holding waystone slot, no target block in range, and a waystone exists
+    const holdingWaystone = hotbarBlocks[interaction.selectedSlot] === 32;
+    if (!weaponMode && holdingWaystone && waystonePos && input.mouseRightDown && !interaction.targetBlock) {
+        player.position.set(waystonePos.x + 0.5, waystonePos.y + 1, waystonePos.z + 0.5);
+        player.velocity.set(0, 0, 0);
+        input.mouseRightDown = false;
+    }
+
     // Block interaction or weapon
     if (weaponMode) {
         weapon.update(dt, input);
@@ -511,8 +641,17 @@ engine.onUpdate((dt) => {
         interaction.update();
     }
 
-    // Entity updates (only in overworld)
-    if (currentDim === 'overworld') {
+    // Track waystone placement
+    if (interaction._lastPlacedBlock === 32 && interaction._lastPlacedPos) {
+        waystonePos = interaction._lastPlacedPos.clone();
+    }
+    interaction._lastPlacedBlock = null;
+
+    // Update entity manager dimension
+    entityManager.currentDimension = currentDim;
+
+    // Entity updates (overworld + outer_end)
+    if (currentDim === 'overworld' || currentDim === 'outer_end') {
         entityManager.update(dt, player.position);
         if (!player.flying) {
             const mobDamage = entityManager.checkMobAttacks(player.position);
@@ -589,6 +728,13 @@ async function initGame() {
     await overworldWorld.init();
     endWorld.shareAtlas(overworldWorld.atlas);
     outerEndWorld.shareAtlas(overworldWorld.atlas);
+
+    // Preload all entity textures (mobs + dragon)
+    await EntityTextureManager.preloadAll();
+
+    // Build hotbar texture cache from atlas and refresh hotbar display
+    buildHotbarTileCache();
+    updateHotbar();
 
     // Set initial dimension
     dimManager.switchTo('overworld', player);

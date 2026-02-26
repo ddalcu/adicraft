@@ -13,6 +13,8 @@ export class EntityManager {
         this.getWorld = getWorld;
         this.entities = [];
         this.spawnTimer = 0;
+        this.currentDimension = 'overworld';
+        this.onMobDrop = null; // callback(blockId, x, y, z) when mob drops an item
     }
 
     update(dt, playerPosition) {
@@ -23,9 +25,20 @@ export class EntityManager {
             entity.update(dt, playerPosition, (x, y, z) => world.getBlock(x, y, z));
         }
 
-        // Despawn far entities and dead entities
+        // Despawn far entities and handle dead entities (drops)
         this.entities = this.entities.filter(entity => {
-            if (entity.dead) return false;
+            if (entity.dead) {
+                // Handle drops
+                if (entity.type.drops && this.onMobDrop) {
+                    const bx = Math.floor(entity.position.x);
+                    const by = Math.floor(entity.position.y);
+                    const bz = Math.floor(entity.position.z);
+                    for (const blockId of entity.type.drops) {
+                        this.onMobDrop(blockId, bx, by, bz);
+                    }
+                }
+                return false;
+            }
 
             const dx = entity.position.x - playerPosition.x;
             const dz = entity.position.z - playerPosition.z;
@@ -63,9 +76,28 @@ export class EntityManager {
         }
         if (groundY < 0) return;
 
-        // Pick random mob type
-        const types = Object.values(MOB_TYPES);
-        const typeDef = types[Math.floor(Math.random() * types.length)];
+        // Filter mob types by current dimension and build weighted list
+        const eligible = [];
+        let totalWeight = 0;
+        for (const typeDef of Object.values(MOB_TYPES)) {
+            const dim = typeDef.dimension || 'overworld';
+            if (dim !== this.currentDimension) continue;
+            const weight = typeDef.spawnWeight || 10;
+            eligible.push({ typeDef, weight });
+            totalWeight += weight;
+        }
+        if (eligible.length === 0) return;
+
+        // Weighted random selection
+        let roll = Math.random() * totalWeight;
+        let typeDef = eligible[0].typeDef;
+        for (const entry of eligible) {
+            roll -= entry.weight;
+            if (roll <= 0) {
+                typeDef = entry.typeDef;
+                break;
+            }
+        }
 
         const pos = new THREE.Vector3(wx + 0.5, groundY, wz + 0.5);
         const entity = new Entity(typeDef, pos, this.scene);

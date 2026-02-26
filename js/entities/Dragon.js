@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { EntityTextureManager, DRAGON_TEXTURE } from './EntityTextureManager.js';
 
 const DRAGON_HP = 200;
 const CIRCLE_RADIUS = 35;
@@ -11,6 +12,9 @@ const CRYSTAL_HEAL_RATE = 0.5; // HP per second per living crystal
 const PHASE_CIRCLE = 'circle';
 const PHASE_DIVE = 'dive';
 const PHASE_PERCH = 'perch';
+
+// Dragon texture is 256x256 logical
+const DRAGON_TEX_SIZE = 256;
 
 export class Dragon {
     constructor(scene, crystals) {
@@ -38,22 +42,35 @@ export class Dragon {
 
     _buildMesh() {
         const group = new THREE.Group();
+        const texture = EntityTextureManager.getTexture(DRAGON_TEXTURE);
 
-        // Body (main)
-        const bodyGeo = new THREE.BoxGeometry(3, 2, 7);
-        const bodyMat = new THREE.MeshLambertMaterial({ color: 0x2C0050 });
-        const body = new THREE.Mesh(bodyGeo, bodyMat);
+        // Helper to create a textured box or fallback to solid color
+        const makeBox = (w, h, d, color, uvParams) => {
+            const geo = new THREE.BoxGeometry(w, h, d);
+            let mat;
+            if (texture && uvParams) {
+                const faceUVs = EntityTextureManager.minecraftBoxUV(
+                    uvParams.u, uvParams.v, uvParams.w, uvParams.h, uvParams.d
+                );
+                EntityTextureManager.applyBoxUVs(geo, DRAGON_TEX_SIZE, DRAGON_TEX_SIZE, faceUVs);
+                mat = new THREE.MeshLambertMaterial({ map: texture, alphaTest: 0.1 });
+            } else {
+                mat = new THREE.MeshLambertMaterial({ color });
+            }
+            return new THREE.Mesh(geo, mat);
+        };
+
+        // Body (main) — use body region from dragon texture
+        const body = makeBox(3, 2, 7, 0x2C0050, { u: 0, v: 0, w: 48, h: 32, d: 112 });
         body.position.set(0, 0, 0);
         group.add(body);
 
-        // Head
-        const headGeo = new THREE.BoxGeometry(2, 1.5, 2.5);
-        const headMat = new THREE.MeshLambertMaterial({ color: 0x2C0050 });
-        const head = new THREE.Mesh(headGeo, headMat);
+        // Head — use head region
+        const head = makeBox(2, 1.5, 2.5, 0x2C0050, { u: 176, v: 44, w: 32, h: 24, d: 40 });
         head.position.set(0, 0.5, 4.5);
         group.add(head);
 
-        // Eyes (glowing)
+        // Eyes (glowing — keep as solid emissive, no texture)
         const eyeGeo = new THREE.BoxGeometry(0.4, 0.3, 0.3);
         const eyeMat = new THREE.MeshBasicMaterial({ color: 0xFF00FF });
         const leftEye = new THREE.Mesh(eyeGeo, eyeMat);
@@ -64,7 +81,7 @@ export class Dragon {
         rightEye.position.set(0.5, 0.7, 5.5);
         group.add(rightEye);
 
-        // Left wing
+        // Left wing — keep as solid color (wing texture is triangular, poor box mapping)
         const wingGeo = new THREE.BoxGeometry(7, 0.3, 4);
         const wingMat = new THREE.MeshLambertMaterial({ color: 0x3A0070 });
         this.leftWing = new THREE.Mesh(wingGeo, wingMat);
@@ -76,10 +93,8 @@ export class Dragon {
         this.rightWing.position.set(5, 0.5, -0.5);
         group.add(this.rightWing);
 
-        // Tail
-        const tailGeo = new THREE.BoxGeometry(1, 1, 4);
-        const tailMat = new THREE.MeshLambertMaterial({ color: 0x2C0050 });
-        const tail = new THREE.Mesh(tailGeo, tailMat);
+        // Tail — use tail region
+        const tail = makeBox(1, 1, 4, 0x2C0050, { u: 192, v: 104, w: 16, h: 16, d: 64 });
         tail.position.set(0, 0, -5);
         group.add(tail);
 

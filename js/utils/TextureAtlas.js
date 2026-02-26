@@ -50,7 +50,8 @@ export const TILE_UV = {
     mycelium_top:   { col: 5, row: 4 },
     mycelium_side:  { col: 6, row: 4 },
     grass_snow_side:{ col: 7, row: 4 },
-    // Row 5 (spare)
+    // Row 5
+    waystone:       { col: 0, row: 5 },
 };
 
 const GRASS_TINT = '#7CBD6B';
@@ -243,6 +244,13 @@ export class TextureAtlas {
         drawTile(myceliumSide, 6, 4);
         drawTile(grassSnowSide, 7, 4);
 
+        // Row 5
+        const waystoneTile = createSolidTile('#5CE1E6');
+        drawTile(waystoneTile, 0, 5);
+
+        // Store canvas reference for hotbar texture extraction
+        this._canvas = canvas;
+
         // Create Three.js texture
         this.texture = new THREE.CanvasTexture(canvas);
         this.texture.magFilter = THREE.NearestFilter;
@@ -261,5 +269,15 @@ export class TextureAtlas {
         const v0 = 1 - (row + 1) / ROWS;
         const v1 = 1 - row / ROWS;
         return { u0, v0, u1, v1 };
+    }
+
+    getTileDataURL(col, row) {
+        const c = document.createElement('canvas');
+        c.width = TILE_SIZE;
+        c.height = TILE_SIZE;
+        const ctx = c.getContext('2d');
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(this._canvas, col * TILE_SIZE, row * TILE_SIZE, TILE_SIZE, TILE_SIZE, 0, 0, TILE_SIZE, TILE_SIZE);
+        return c.toDataURL();
     }
 }

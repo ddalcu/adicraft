@@ -252,6 +252,14 @@ export const BLOCK_TYPES = {
         topUV: TILE_UV.mycelium_top,
         sideUV: TILE_UV.mycelium_side,
         bottomUV: TILE_UV.dirt
+    },
+    32: {
+        name: 'waystone',
+        solid: true,
+        topColor: '#5CE1E6',
+        topUV: TILE_UV.waystone,
+        sideUV: TILE_UV.waystone,
+        bottomUV: TILE_UV.waystone
     }
 };
 

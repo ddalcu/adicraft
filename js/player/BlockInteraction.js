@@ -23,6 +23,10 @@ export class BlockInteraction {
 
         // Network callback: if set, block changes route through this instead of direct world.setBlock
         this.onBlockChange = null;
+
+        // Track last placed block for waystone detection
+        this._lastPlacedBlock = null;
+        this._lastPlacedPos = null;
     }
 
     get world() {
@@ -164,6 +168,11 @@ export class BlockInteraction {
         } else {
             this.world.setBlock(px, py, pz, this.selectedBlockType);
         }
+
+        // Track placed block for waystone detection
+        this._lastPlacedBlock = this.selectedBlockType;
+        this._lastPlacedPos = new THREE.Vector3(px, py, pz);
+
         if (this.sound) this.sound.playBlockPlace();
     }
 }

@@ -1,3 +1,5 @@
+const BUILD_ID = document.documentElement.dataset.build || 'dev';
+
 import * as THREE from 'three';
 import { GameEngine } from './engine/GameEngine.js';
 import { InputManager } from './engine/InputManager.js';
@@ -20,6 +22,7 @@ import { SoundManager } from './audio/SoundManager.js';
 import { EntityTextureManager } from './entities/EntityTextureManager.js';
 import { SyncManager } from './network/SyncManager.js';
 import { RemotePlayer } from './network/RemotePlayer.js';
+import { MultiplayerUI } from './network/MultiplayerUI.js';
 
 // DOM elements
 const canvas = document.getElementById('game-canvas');
@@ -36,6 +39,9 @@ const engine = new GameEngine(canvas);
 const input = new InputManager(canvas);
 const hud = new HUD();
 const sound = new SoundManager();
+
+// Game state
+let gameReady = false; // true after player joins a world
 
 // Sync state
 let syncManager = null;
@@ -68,11 +74,12 @@ const dimensionWorlds = {
     outer_end: outerEndWorld,
 };
 
+const overworldSpawnY = overworldTerrain.getHeight(8, 8) + 2;
 dimManager.register('overworld', overworldWorld, {
     skyColor: 0x87CEEB,
     fogNear: 50,
     fogFar: 250,
-    spawnPoint: new THREE.Vector3(8, 64, 8),
+    spawnPoint: new THREE.Vector3(8, overworldSpawnY, 8),
 });
 
 dimManager.register('end', endWorld, {
@@ -245,6 +252,7 @@ async function handleCommand(text) {
         case 'help': {
             addSystemMessage('--- Commands ---');
             addSystemMessage('/help - Show this list');
+            addSystemMessage('/worlds - Browse & switch worlds');
             addSystemMessage('/clear - Clear chat');
             addSystemMessage('/setadmin <key> - Set/verify admin key');
             addSystemMessage('/op <player> - Grant op (admin)');
@@ -252,6 +260,10 @@ async function handleCommand(text) {
             addSystemMessage('/tp <player> | <x> <y> <z> - Teleport (admin/op)');
             addSystemMessage('/give <blockId> - Set hotbar slot block (admin/op)');
             addSystemMessage('/kick <player> - Kick player (admin)');
+            break;
+        }
+        case 'worlds': {
+            showWorldBrowser();
             break;
         }
         case 'clear': {
@@ -481,6 +493,7 @@ function requestPointerLock() {
 if (isMobile) {
     // Mobile: tap overlay to start, no pointer lock needed
     overlay.addEventListener('click', () => {
+        if (!gameReady) return;
         showGameUI();
     });
 
@@ -548,6 +561,7 @@ if (isMobile) {
 } else {
     // Desktop: pointer lock flow
     overlay.addEventListener('click', () => {
+        if (!gameReady) return;
         requestPointerLock();
     });
 
@@ -726,6 +740,7 @@ function savePlayerState() {
 function restorePlayerState() {
     if (!syncManager) return;
     const state = syncManager.loadPlayerState();
+    console.log('[restore] before:', { x: player.position.x, y: player.position.y, z: player.position.z }, 'saved:', state);
     if (!state) return;
 
     // Restore dimension first
@@ -738,6 +753,7 @@ function restorePlayerState() {
 
     // Restore position
     if (state.x !== undefined) {
+        console.log('[restore] moving player to saved:', state.x, state.y, state.z);
         player.position.set(state.x, state.y, state.z);
     }
     if (state.yaw !== undefined) {
@@ -766,6 +782,15 @@ function updatePlayerCount() {
 // =========================
 
 engine.onUpdate((dt) => {
+    // Freeze all player logic while overlay is visible (menu / "Click to Play")
+    if (!overlay.classList.contains('hidden')) {
+        // Still update world + camera so chunks load and view is correct
+        const world = getWorld();
+        if (world) world.update(player.position);
+        engine.camera.position.set(player.position.x, player.position.y + 1.52, player.position.z);
+        return;
+    }
+
     // Pink texture effect timer (ticks even during chat)
     if (pinkTimer > 0) {
         pinkTimer -= dt;
@@ -1000,6 +1025,109 @@ async function initGame() {
 }
 
 // ==================
+// World Browser (via /worlds command)
+// ==================
+
+function showWorldBrowser() {
+    closeChat();
+    gameReady = false; // prevent overlay click-to-play while browsing
+    if (document.pointerLockElement) document.exitPointerLock();
+    const mpUI = new MultiplayerUI();
+    mpUI.onJoin((room, name) => {
+        // Save state before switching
+        savePlayerState();
+        localStorage.setItem('adicraft-room', room);
+        localStorage.setItem('adicraft-name', name);
+        location.reload();
+    });
+    mpUI.showBrowser();
+    hideGameUI();
+}
+
+// ==================
+// Connect to a world and start the game
+// ==================
+
+function connectAndStart(roomId, name) {
+    gameReady = true;
+    playerName = name;
+
+    // Initialize Yjs sync
+    syncManager = new SyncManager(roomId);
+    setupSync();
+    syncManager.connect();
+
+    // Wire weapon remote hit: non-authority sends damage via mob events
+    weapon.onRemoteHit = (mobId, damage) => {
+        if (syncManager.isAuthority()) {
+            entityManager.applyDamageById(mobId, damage);
+        } else {
+            syncManager.sendMobEvent(mobId, 'damage', damage);
+        }
+    };
+
+    // On IndexedDB sync: show chat history and re-verify admin key
+    syncManager.indexeddbProvider.once('synced', async () => {
+        const history = syncManager.getChatHistory(20);
+        for (const msg of history) {
+            displayChatMessage(msg);
+        }
+
+        const storedKey = localStorage.getItem('adicraft-admin-key');
+        if (storedKey) {
+            const valid = await syncManager.verifyAdmin(storedKey);
+            isAdmin = valid;
+            if (valid) addSystemMessage('Admin session restored.');
+        }
+    });
+
+    // Restore player state from previous session
+    restorePlayerState();
+
+    // Show player info + branch name in top-right
+    const branchDisplay = roomId.replace(/^adicraft-/, '');
+    let info = document.getElementById('host-info');
+    if (!info) {
+        info = document.createElement('div');
+        info.id = 'host-info';
+        document.body.appendChild(info);
+    }
+    info.innerHTML = `<span class="host-info-label">${playerName}</span> <span class="host-info-code">${branchDisplay}</span> <span id="player-count">1 player</span> <span class="branch-age">${BUILD_ID}</span>`;
+    info.classList.add('visible-block');
+
+    // Show play screen
+    const content = document.getElementById('overlay-content');
+    const playText = isMobile ? 'Tap to Play' : 'Click to Play';
+    const controls = isMobile
+        ? `<div class="controls-grid">
+            <span class="key">Joystick</span><span class="action">Move</span>
+            <span class="key">Drag screen</span><span class="action">Look around</span>
+            <span class="key">JUMP</span><span class="action">Jump / Fly up</span>
+            <span class="key">DOWN</span><span class="action">Fly down</span>
+            <span class="key">ACT</span><span class="action">Break / Shoot</span>
+            <span class="key">MODE</span><span class="action">Toggle gun</span>
+           </div>`
+        : `<div class="controls-grid">
+            <span class="key">WASD</span><span class="action">Move</span>
+            <span class="key">Mouse</span><span class="action">Look around</span>
+            <span class="key">Left Click</span><span class="action">Break block / Shoot</span>
+            <span class="key">Right Click</span><span class="action">Place block</span>
+            <span class="key">Space</span><span class="action">Jump (double-tap: fly)</span>
+            <span class="key">Shift</span><span class="action">Descend while flying</span>
+            <span class="key">1-9</span><span class="action">Select hotbar slot</span>
+            <span class="key">G</span><span class="action">Toggle gun mode</span>
+            <span class="key">T</span><span class="action">Open chat (/worlds to switch)</span>
+           </div>`;
+    content.innerHTML = `<h1>AdiCraft</h1><p>${playText}</p>${controls}`;
+    overlay.style.cursor = 'pointer';
+
+    // Save state on tab close
+    window.addEventListener('beforeunload', () => {
+        savePlayerState();
+    });
+}
+
+// ==================
 // Startup
 // ==================
 
@@ -1008,84 +1136,22 @@ async function initGame() {
     content.innerHTML = '<h1>AdiCraft</h1><p>Loading...</p>';
 
     try {
-        // Get room and player name from localStorage or defaults
-        const roomId = localStorage.getItem('adicraft-room') || 'adicraft-main';
-        playerName = localStorage.getItem('adicraft-name') || 'Player-' + Math.random().toString(36).substring(2, 6);
-
-        // Initialize Yjs sync
-        syncManager = new SyncManager(roomId);
-        setupSync();
-        syncManager.connect();
-
-        // Wire weapon remote hit: non-authority sends damage via mob events
-        weapon.onRemoteHit = (mobId, damage) => {
-            if (syncManager.isAuthority()) {
-                // Authority applies damage directly
-                entityManager.applyDamageById(mobId, damage);
-            } else {
-                syncManager.sendMobEvent(mobId, 'damage', damage);
-            }
-        };
-
-        // On IndexedDB sync: show chat history and re-verify admin key
-        syncManager.indexeddbProvider.once('synced', async () => {
-            const history = syncManager.getChatHistory(20);
-            for (const msg of history) {
-                displayChatMessage(msg);
-            }
-
-            // Re-verify stored admin key
-            const storedKey = localStorage.getItem('adicraft-admin-key');
-            if (storedKey) {
-                const valid = await syncManager.verifyAdmin(storedKey);
-                isAdmin = valid;
-                if (valid) addSystemMessage('Admin session restored.');
-            }
-        });
-
         await initGame();
 
-        // Restore player state from previous session
-        restorePlayerState();
+        const hasName = localStorage.getItem('adicraft-name');
+        const roomId = localStorage.getItem('adicraft-room') || 'adicraft-main';
 
-        // Show player info in top-right
-        let info = document.getElementById('host-info');
-        if (!info) {
-            info = document.createElement('div');
-            info.id = 'host-info';
-            document.body.appendChild(info);
+        if (!hasName) {
+            // First visit: show the main menu
+            const mpUI = new MultiplayerUI();
+            mpUI.onJoin((room, name) => {
+                connectAndStart(room, name);
+            });
+            mpUI.show();
+        } else {
+            // Return visit: auto-connect to last branch
+            connectAndStart(roomId, hasName);
         }
-        info.innerHTML = `<span class="host-info-label">${playerName}</span> <span id="player-count">1 player</span>`;
-        info.classList.add('visible-block');
-
-        const playText = isMobile ? 'Tap to Play' : 'Click to Play';
-        const controls = isMobile
-            ? `<div class="controls-grid">
-                <span class="key">Joystick</span><span class="action">Move</span>
-                <span class="key">Drag screen</span><span class="action">Look around</span>
-                <span class="key">JUMP</span><span class="action">Jump / Fly up</span>
-                <span class="key">DOWN</span><span class="action">Fly down</span>
-                <span class="key">ACT</span><span class="action">Break / Shoot</span>
-                <span class="key">MODE</span><span class="action">Toggle gun</span>
-               </div>`
-            : `<div class="controls-grid">
-                <span class="key">WASD</span><span class="action">Move</span>
-                <span class="key">Mouse</span><span class="action">Look around</span>
-                <span class="key">Left Click</span><span class="action">Break block / Shoot</span>
-                <span class="key">Right Click</span><span class="action">Place block</span>
-                <span class="key">Space</span><span class="action">Jump (double-tap: fly)</span>
-                <span class="key">Shift</span><span class="action">Descend while flying</span>
-                <span class="key">1-9</span><span class="action">Select hotbar slot</span>
-                <span class="key">G</span><span class="action">Toggle gun mode</span>
-                <span class="key">T</span><span class="action">Open chat</span>
-               </div>`;
-        content.innerHTML = `<h1>AdiCraft</h1><p>${playText}</p>${controls}`;
-        overlay.style.cursor = 'pointer';
-
-        // Save state on tab close
-        window.addEventListener('beforeunload', () => {
-            savePlayerState();
-        });
     } catch (err) {
         console.error('Init error:', err);
         content.innerHTML = `<h2>Error</h2><p>${err.message}</p>`;

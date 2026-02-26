@@ -15,7 +15,9 @@ Open `http://localhost:3000`. Click to lock pointer and play. A local server is 
 
 ## Deployment
 
-GitHub Actions deploys to GitHub Pages on push to main (`.github/workflows/deploy.yml`). Static site, no server-side code.
+**Game client**: GitHub Actions deploys to GitHub Pages on push to main (`.github/workflows/deploy.yml`). Static site. Build ID (git hash) stamped into `index.html` via `sed` at deploy time (`data-build` attribute on `<html>`).
+
+**Relay server**: Docker container deployed to `adiserver.deploy.dalcu.com`. Persistent data stored in `/app/dbDir` volume (LevelDB for Yjs docs, `branches.json` for branch metadata). Build: `docker build -t adiserver server/`, deploy via `mcp-deploy`.
 
 ## Architecture
 
@@ -46,7 +48,7 @@ engine.onUpdate((dt) => { player.update(dt); world.update(pos); ... })
 | SoundManager | `js/audio/SoundManager.js` | Procedural Web Audio synthesis (no audio files): shoot, hurt, jump, footstep, block break/place |
 | SyncManager | `js/network/SyncManager.js` | Yjs CRDT sync: blocks, chat, player state, mob events via WebSocket + IndexedDB |
 | RemotePlayer | `js/network/RemotePlayer.js` | 3D avatar with nametag, gun visibility, muzzle flash, lerped interpolation |
-| MultiplayerUI | `js/network/MultiplayerUI.js` | Name/room input overlay for joining worlds |
+| MultiplayerUI | `js/network/MultiplayerUI.js` | Branch-oriented world menu: main menu, branch browser, create world |
 
 ### Key Design Patterns
 
@@ -58,6 +60,8 @@ engine.onUpdate((dt) => { player.update(dt); world.update(pos); ... })
 - **Camera-attached weapon**: Gun model is a child of the camera (camera added to scene in GameEngine).
 - **Authority system**: Lowest Yjs clientID manages mob spawning/AI to prevent duplication in multiplayer.
 - **CRDT sync**: All shared state (blocks, chat, ops) uses Yjs conflict-free replicated data types.
+- **Overlay freeze**: Game loop skips player/entity updates while the menu overlay is visible, preventing physics from running before terrain syncs. Only chunk loading and camera positioning run during overlay.
+- **Chunk-loading guard**: Player physics freeze if the chunk under the player isn't loaded yet, preventing fall-through on unloaded terrain.
 
 ### Block System
 
@@ -71,7 +75,7 @@ Key blocks: air(0), grass(1), dirt(2), stone(3), wood(4), leaves(5), water(6), s
 
 ### Dimensions
 
-- **Overworld** (seed=42): Biome-based terrain, spawn at (8, 64, 8), sky 0x87CEEB
+- **Overworld** (seed=42): Biome-based terrain, spawn at (8, terrain_height+2, 8), sky 0x87CEEB
 - **End**: Central end_stone island, 8 obsidian towers, dragon boss + crystals, sky black
 - **Outer End**: Floating islands, chorus plants, end cities (purpur towers), Ryan Smith NPC
 
@@ -81,10 +85,19 @@ Uses Yjs CRDTs with a y-websocket relay server (`wss://adiserver.deploy.dalcu.co
 
 - **Block sync**: One YMap per dimension, keyed by `"x,y,z"` coordinates
 - **Player positions**: Yjs Awareness protocol (ephemeral, 20Hz updates)
-- **Chat**: YArray with max 100 messages, supports system messages
+- **Chat**: YArray with max 100 messages, supports system messages and `/worlds` command
 - **Mob coordination**: Authority client (lowest clientID) manages spawning; mob events YArray for cross-client damage
 - **Persistence**: IndexedDB stores Yjs doc locally; block changes survive disconnects
 - **Admin/Ops**: SHA-256 hashed admin password, ops list in YMap
+- **World branching**: Git-style branch system. Each branch = separate Yjs room with metadata. Server tracks branches in `branches.json` (parent, createdAt, lastActivity). Forking copies parent Yjs doc state via `Y.encodeStateAsUpdate`/`Y.applyUpdate`. `adicraft-main` is permanent and auto-created.
+- **Branch API**: `GET /api/branches` (list with player counts), `POST /api/branches` (create/fork), `DELETE /api/branches/:name` (remove). Auto-cleanup hourly removes branches inactive 30+ days with 0 players.
+
+### Startup Flow
+
+- **First visit** (no `adicraft-name` in localStorage): Shows MultiplayerUI main menu (name input, Join Main World, Browse Worlds, Create New World)
+- **Return visit**: Auto-connects to last branch from localStorage, shows "Click to Play" overlay
+- **`/worlds` chat command**: Opens branch browser without page reload; selecting a world saves to localStorage and reloads
+- **Game loop frozen during overlay**: Only chunk loading and camera positioning run while menu is visible, preventing physics fall-through during Yjs sync
 
 ### Configuration
 

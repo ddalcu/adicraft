@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import {
     MOUSE_SENSITIVITY, MAX_PITCH, MOVE_SPEED, FLY_SPEED, JUMP_VELOCITY,
     GRAVITY, PLAYER_HEIGHT, PLAYER_WIDTH, PLAYER_EYE_HEIGHT, CHUNK_HEIGHT,
-    DOUBLE_TAP_WINDOW
+    CHUNK_SIZE, DOUBLE_TAP_WINDOW
 } from '../utils/constants.js';
 import { isSolid } from '../world/BlockTypes.js';
 
@@ -134,6 +134,17 @@ export class Player {
     }
 
     _applyPhysics(dt) {
+        // Don't apply gravity if the chunk beneath us isn't loaded yet
+        // (getBlock returns 0/air for unloaded chunks, causing fall-through)
+        const world = this.world;
+        const cx = Math.floor(this.position.x / CHUNK_SIZE);
+        const cz = Math.floor(this.position.z / CHUNK_SIZE);
+        if (!world.getChunk(cx, cz)) {
+            this.velocity.set(0, 0, 0);
+            this._updateCamera();
+            return;
+        }
+
         if (!this.flying) {
             this.velocity.y -= GRAVITY * dt;
         }

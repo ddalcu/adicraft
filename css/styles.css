@@ -408,6 +408,91 @@ html, body {
     background: rgba(255, 255, 255, 0.25);
 }
 
+.mp-btn-danger {
+    background: rgba(244, 67, 54, 0.3);
+    border-color: rgba(244, 67, 54, 0.6);
+}
+
+.mp-btn-danger:hover {
+    background: rgba(244, 67, 54, 0.5);
+}
+
+/* Branch browser UI */
+.branch-list {
+    max-height: 300px;
+    overflow-y: auto;
+    width: 340px;
+    margin: 12px auto;
+    text-align: left;
+}
+
+.branch-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    margin-bottom: 4px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.branch-item:hover {
+    background: rgba(76, 175, 80, 0.15);
+    border-color: rgba(76, 175, 80, 0.4);
+}
+
+.branch-item-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.branch-item-name {
+    color: #fff;
+    font-size: 14px;
+    font-weight: bold;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.branch-item-meta {
+    display: flex;
+    gap: 10px;
+    font-size: 11px;
+}
+
+.branch-player-count {
+    color: #4CAF50;
+    font-weight: bold;
+    white-space: nowrap;
+}
+
+.branch-age {
+    color: rgba(255, 255, 255, 0.4);
+    white-space: nowrap;
+}
+
+.branch-parent {
+    color: rgba(255, 255, 255, 0.3);
+    white-space: nowrap;
+}
+
+.branch-label {
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 13px;
+    margin: 8px 0 4px;
+}
+
+.mp-subtitle {
+    font-size: 14px;
+    color: rgba(255, 255, 255, 0.5);
+    margin-bottom: 12px;
+}
+
 .mp-input {
     display: block;
     width: 240px;

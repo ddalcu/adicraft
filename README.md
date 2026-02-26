@@ -15,7 +15,8 @@ A browser-based Minecraft-like voxel game with real-time multiplayer. Built with
                         │                              │
                         │  - Relays Yjs doc updates    │
                         │  - Routes awareness state    │
-                        │  - No game logic (stateless) │
+                        │  - Branch metadata + API     │
+                        │  - Auto-cleanup (30d stale)  │
                         └──────────┬──────────────────┘
                                    │
                     WebSocket (wss://)
@@ -89,9 +90,10 @@ A browser-based Minecraft-like voxel game with real-time multiplayer. Built with
 
 ### Multiplayer
 - Real-time P2P sync via Yjs CRDTs (no central game server)
+- **World branching**: fork worlds (git-style), browse by player count, auto-cleanup of stale branches
 - Shared block changes persist across sessions
 - Remote player avatars with nametags and weapon visibility
-- In-game chat with admin/ops system
+- In-game chat with admin/ops system (`/worlds` to switch worlds)
 - Authority-based mob coordination
 
 ### Other
@@ -116,6 +118,7 @@ A browser-based Minecraft-like voxel game with real-time multiplayer. Built with
 | 1-9 | Select hotbar slot |
 | G | Toggle weapon mode |
 | T | Open chat |
+| /worlds | Browse & switch worlds (in chat) |
 | Escape | Release pointer |
 
 ---
@@ -178,11 +181,15 @@ adicraft/
 │   ├── network/
 │   │   ├── SyncManager.js      # Yjs CRDT sync, authority, admin
 │   │   ├── RemotePlayer.js     # Remote player 3D avatar
-│   │   └── MultiplayerUI.js    # Join world overlay
+│   │   └── MultiplayerUI.js    # Branch-oriented world menu (join/browse/create)
 │   └── utils/
 │       ├── constants.js        # All tunable parameters
 │       ├── TextureAtlas.js     # Block texture atlas builder
 │       └── noise.js            # Simplex noise
+├── server/
+│   ├── server.cjs             # y-websocket relay + branch API + status page
+│   ├── Dockerfile             # Node 24 Alpine container
+│   └── package.json
 └── texturepacks/
     └── Default/assets/minecraft/textures/
         ├── block/              # 40+ block textures (PNG)

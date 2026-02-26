@@ -476,13 +476,11 @@ function hideGameUI() {
 // Pointer lock — starts game on click (desktop only)
 function requestPointerLock() {
     canvas.requestPointerLock();
-    sound.startMusic('game-music-loop.mp3');
 }
 
 if (isMobile) {
     // Mobile: tap overlay to start, no pointer lock needed
     overlay.addEventListener('click', () => {
-        sound.startMusic('game-music-loop.mp3');
         showGameUI();
     });
 

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { EntityTextureManager } from './EntityTextureManager.js';
+import { EntityAnimator } from './EntityAnimator.js';
 
 export class Entity {
     constructor(typeDef, position, scene, id) {
@@ -17,6 +18,13 @@ export class Entity {
         this.wanderDir = new THREE.Vector3(0, 0, 0);
         this.attackCooldown = 0;
         this.hurtFlashTimer = 0;
+
+        // Sound state
+        this.soundCooldown = 3 + Math.random() * 7;
+        this.onPlaySound = null; // callback(soundType)
+
+        // Track movement for animation
+        this._isMoving = false;
 
         // Build mesh group from box definitions
         this.mesh = this._buildMesh();
@@ -37,7 +45,6 @@ export class Entity {
             let mat;
 
             if (texture && this.type.fullTexture) {
-                // Full texture mode: map entire texture to each face (nextbot style)
                 mat = new THREE.MeshLambertMaterial({ map: texture });
             } else if (texture && box.uv && this.type.textureSize) {
                 const [texW, texH] = this.type.textureSize;
@@ -60,6 +67,9 @@ export class Entity {
             group.add(mesh);
             this._boxMeshes.push(mesh);
         }
+
+        // Create animator after meshes are built
+        this.animator = new EntityAnimator(this.type.boxes, this._boxMeshes);
 
         return group;
     }
@@ -86,6 +96,18 @@ export class Entity {
         // Simple gravity — snap to ground
         this._applyGravity(getBlock);
 
+        // Animate limbs
+        if (this.animator) {
+            this.animator.update(dt, this._isMoving);
+        }
+
+        // Ambient sounds
+        this.soundCooldown -= dt;
+        if (this.soundCooldown <= 0 && this.type.ambientSound && this.onPlaySound) {
+            this.soundCooldown = 5 + Math.random() * 10;
+            this.onPlaySound(this.type.ambientSound);
+        }
+
         this.mesh.position.copy(this.position);
     }
 
@@ -103,6 +125,7 @@ export class Entity {
 
             // Face player
             this.mesh.rotation.y = Math.atan2(dx, dz);
+            this._isMoving = true;
         } else {
             this._wander(dt);
         }
@@ -120,8 +143,11 @@ export class Entity {
             this.wanderTimer = 2 + Math.random() * 4;
         }
 
-        this.position.x += this.wanderDir.x * this.type.speed * 0.3 * dt;
-        this.position.z += this.wanderDir.z * this.type.speed * 0.3 * dt;
+        const speed = this.type.speed * 0.3;
+        this._isMoving = speed > 0.01;
+
+        this.position.x += this.wanderDir.x * speed * dt;
+        this.position.z += this.wanderDir.z * speed * dt;
         this.mesh.rotation.y = Math.atan2(this.wanderDir.x, this.wanderDir.z);
     }
 
@@ -161,8 +187,41 @@ export class Entity {
         if (this.health <= 0) {
             this.health = 0;
             this.dead = true;
+            this._spawnDeathParticles();
             this.dispose();
         }
+    }
+
+    _spawnDeathParticles() {
+        // Spawn colored cube particles that fly outward
+        const color = this.type.boxes[0].color;
+        const count = 12;
+
+        for (let i = 0; i < count; i++) {
+            const geo = new THREE.BoxGeometry(0.12, 0.12, 0.12);
+            const mat = new THREE.MeshLambertMaterial({ color, transparent: true });
+            const particle = new THREE.Mesh(geo, mat);
+
+            particle.position.set(
+                this.position.x + (Math.random() - 0.5) * 0.5,
+                this.position.y + Math.random() * this.type.height,
+                this.position.z + (Math.random() - 0.5) * 0.5
+            );
+
+            particle.userData.velocity = new THREE.Vector3(
+                (Math.random() - 0.5) * 4,
+                Math.random() * 5 + 2,
+                (Math.random() - 0.5) * 4
+            );
+            particle.userData.life = 1.0;
+
+            this.scene.add(particle);
+            // EntityManager picks these up via static array
+            Entity.pendingParticles.push(particle);
+        }
+
+        // Play death sound
+        if (this.onPlaySound) this.onPlaySound('death');
     }
 
     _resetColors() {
@@ -194,6 +253,7 @@ export class Entity {
         this.health = health;
         if (this.health <= 0 && !this.dead) {
             this.dead = true;
+            this._spawnDeathParticles();
             this.dispose();
         }
     }
@@ -262,3 +322,6 @@ export class Entity {
         }
     }
 }
+
+// Static array for death particles — EntityManager drains this each frame
+Entity.pendingParticles = [];

@@ -6,6 +6,7 @@ const SPAWN_RADIUS = 40;
 const DESPAWN_RADIUS = 80;
 const MAX_ENTITIES = 30;
 const SPAWN_INTERVAL = 2; // seconds between spawn attempts
+const PARTICLE_GRAVITY = 15;
 
 export class EntityManager {
     constructor(scene, getWorld) {
@@ -15,16 +16,30 @@ export class EntityManager {
         this.spawnTimer = 0;
         this.currentDimension = 'overworld';
         this.authorityMode = true;
-        this.onMobDrop = null; // callback(blockId, x, y, z) when mob drops an item
+        this.onMobDrop = null; // callback(dropId, x, y, z) when mob drops an item
+        this.onPlaySound = null; // callback(soundType) for mob ambient sounds
+        this.particles = [];
     }
 
     update(dt, playerPosition) {
+        // Always update particles (visual only)
+        this._updateParticles(dt);
+
+        // Drain any pending death particles from Entity
+        while (Entity.pendingParticles.length > 0) {
+            this.particles.push(Entity.pendingParticles.pop());
+        }
+
         if (!this.authorityMode) {
             // Non-authority: only tick hurt flash timers for visual feedback
             for (const entity of this.entities) {
                 if (entity.hurtFlashTimer > 0) {
                     entity.hurtFlashTimer -= dt;
                     if (entity.hurtFlashTimer <= 0) entity._resetColors();
+                }
+                // Still animate non-authority mobs
+                if (entity.animator) {
+                    entity.animator.update(dt, false);
                 }
             }
             return;
@@ -45,8 +60,8 @@ export class EntityManager {
                     const bx = Math.floor(entity.position.x);
                     const by = Math.floor(entity.position.y);
                     const bz = Math.floor(entity.position.z);
-                    for (const blockId of entity.type.drops) {
-                        this.onMobDrop(blockId, bx, by, bz);
+                    for (const dropId of entity.type.drops) {
+                        this.onMobDrop(dropId, bx, by, bz);
                     }
                 }
                 return false;
@@ -67,6 +82,29 @@ export class EntityManager {
             this.spawnTimer = SPAWN_INTERVAL;
             this._trySpawn(playerPosition, world);
         }
+    }
+
+    _updateParticles(dt) {
+        this.particles = this.particles.filter(p => {
+            p.userData.life -= dt;
+            if (p.userData.life <= 0) {
+                this.scene.remove(p);
+                p.geometry.dispose();
+                p.material.dispose();
+                return false;
+            }
+            // Apply gravity and velocity
+            p.userData.velocity.y -= PARTICLE_GRAVITY * dt;
+            p.position.x += p.userData.velocity.x * dt;
+            p.position.y += p.userData.velocity.y * dt;
+            p.position.z += p.userData.velocity.z * dt;
+            // Fade out
+            p.material.opacity = p.userData.life;
+            // Spin
+            p.rotation.x += dt * 5;
+            p.rotation.z += dt * 3;
+            return true;
+        });
     }
 
     _trySpawn(playerPosition, world) {
@@ -113,6 +151,10 @@ export class EntityManager {
 
         const pos = new THREE.Vector3(wx + 0.5, groundY, wz + 0.5);
         const entity = new Entity(typeDef, pos, this.scene);
+        // Wire up sound callback
+        if (this.onPlaySound) {
+            entity.onPlaySound = this.onPlaySound;
+        }
         this.entities.push(entity);
     }
 
@@ -181,6 +223,9 @@ export class EntityManager {
                 const pos = new THREE.Vector3(data.x, data.y, data.z);
                 entity = new Entity(typeDef, pos, this.scene, data.id);
                 entity.health = data.health;
+                if (this.onPlaySound) {
+                    entity.onPlaySound = this.onPlaySound;
+                }
                 this.entities.push(entity);
             }
 
@@ -210,5 +255,12 @@ export class EntityManager {
             entity.dispose();
         }
         this.entities = [];
+        // Clean up particles
+        for (const p of this.particles) {
+            this.scene.remove(p);
+            p.geometry.dispose();
+            p.material.dispose();
+        }
+        this.particles = [];
     }
 }

@@ -270,6 +270,178 @@ export class SoundManager {
         noise.stop(t + 0.12);
     }
 
+    // --- Mob sounds: procedural ambient sounds ---
+
+    playMobSound(type) {
+        switch (type) {
+            case 'zombie': return this.playZombieGroan();
+            case 'skeleton': return this.playSkeletonRattle();
+            case 'pig': return this.playPigOink();
+            case 'cow': return this.playCowMoo();
+            case 'death': return this.playMobDeath();
+        }
+    }
+
+    playZombieGroan() {
+        if (!this._ensure()) return;
+        const t = this.ctx.currentTime;
+
+        const osc = this.ctx.createOscillator();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(80 + Math.random() * 20, t);
+        osc.frequency.linearRampToValueAtTime(55 + Math.random() * 15, t + 0.5);
+
+        const lp = this.ctx.createBiquadFilter();
+        lp.type = 'lowpass';
+        lp.frequency.value = 300;
+
+        const gain = this.ctx.createGain();
+        gain.gain.setValueAtTime(0.12, t);
+        gain.gain.linearRampToValueAtTime(0.08, t + 0.3);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.5);
+
+        osc.connect(lp).connect(gain).connect(this.masterGain);
+        osc.start(t);
+        osc.stop(t + 0.5);
+    }
+
+    playSkeletonRattle() {
+        if (!this._ensure()) return;
+        const t = this.ctx.currentTime;
+
+        // 3 quick clicks
+        for (let i = 0; i < 3; i++) {
+            const offset = i * 0.06;
+            const noise = this.ctx.createBufferSource();
+            noise.buffer = this._noiseBuffer(0.02, this.ctx.sampleRate);
+
+            const hp = this.ctx.createBiquadFilter();
+            hp.type = 'highpass';
+            hp.frequency.value = 2000 + Math.random() * 1000;
+
+            const gain = this.ctx.createGain();
+            gain.gain.setValueAtTime(0.15, t + offset);
+            gain.gain.exponentialRampToValueAtTime(0.001, t + offset + 0.03);
+
+            noise.connect(hp).connect(gain).connect(this.masterGain);
+            noise.start(t + offset);
+            noise.stop(t + offset + 0.03);
+        }
+    }
+
+    playPigOink() {
+        if (!this._ensure()) return;
+        const t = this.ctx.currentTime;
+
+        const osc = this.ctx.createOscillator();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(200, t);
+        osc.frequency.linearRampToValueAtTime(400, t + 0.08);
+        osc.frequency.linearRampToValueAtTime(220, t + 0.2);
+
+        const gain = this.ctx.createGain();
+        gain.gain.setValueAtTime(0.15, t);
+        gain.gain.linearRampToValueAtTime(0.12, t + 0.1);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
+
+        osc.connect(gain).connect(this.masterGain);
+        osc.start(t);
+        osc.stop(t + 0.2);
+    }
+
+    playCowMoo() {
+        if (!this._ensure()) return;
+        const t = this.ctx.currentTime;
+
+        const osc = this.ctx.createOscillator();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(100, t);
+        osc.frequency.linearRampToValueAtTime(130, t + 0.3);
+        osc.frequency.linearRampToValueAtTime(90, t + 0.8);
+
+        const lp = this.ctx.createBiquadFilter();
+        lp.type = 'lowpass';
+        lp.frequency.value = 400;
+
+        // Vibrato
+        const vibrato = this.ctx.createOscillator();
+        vibrato.type = 'sine';
+        vibrato.frequency.value = 5;
+        const vibratoGain = this.ctx.createGain();
+        vibratoGain.gain.value = 8;
+        vibrato.connect(vibratoGain).connect(osc.frequency);
+        vibrato.start(t);
+        vibrato.stop(t + 0.8);
+
+        const gain = this.ctx.createGain();
+        gain.gain.setValueAtTime(0.1, t);
+        gain.gain.linearRampToValueAtTime(0.12, t + 0.2);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.8);
+
+        osc.connect(lp).connect(gain).connect(this.masterGain);
+        osc.start(t);
+        osc.stop(t + 0.8);
+    }
+
+    playMobDeath() {
+        if (!this._ensure()) return;
+        const t = this.ctx.currentTime;
+
+        // Poof noise burst
+        const noise = this.ctx.createBufferSource();
+        noise.buffer = this._noiseBuffer(0.15, this.ctx.sampleRate);
+
+        const bp = this.ctx.createBiquadFilter();
+        bp.type = 'bandpass';
+        bp.frequency.setValueAtTime(800, t);
+        bp.frequency.exponentialRampToValueAtTime(200, t + 0.15);
+        bp.Q.value = 1;
+
+        const gain = this.ctx.createGain();
+        gain.gain.setValueAtTime(0.25, t);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.15);
+
+        noise.connect(bp).connect(gain).connect(this.masterGain);
+        noise.start(t);
+        noise.stop(t + 0.15);
+
+        // Low thump
+        const osc = this.ctx.createOscillator();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(100, t);
+        osc.frequency.exponentialRampToValueAtTime(40, t + 0.1);
+
+        const oscGain = this.ctx.createGain();
+        oscGain.gain.setValueAtTime(0.2, t);
+        oscGain.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+
+        osc.connect(oscGain).connect(this.masterGain);
+        osc.start(t);
+        osc.stop(t + 0.12);
+    }
+
+    playToolBreak() {
+        if (!this._ensure()) return;
+        const t = this.ctx.currentTime;
+
+        const noise = this.ctx.createBufferSource();
+        noise.buffer = this._noiseBuffer(0.2, this.ctx.sampleRate);
+
+        const bp = this.ctx.createBiquadFilter();
+        bp.type = 'bandpass';
+        bp.frequency.setValueAtTime(2000, t);
+        bp.frequency.exponentialRampToValueAtTime(500, t + 0.15);
+        bp.Q.value = 2;
+
+        const gain = this.ctx.createGain();
+        gain.gain.setValueAtTime(0.3, t);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
+
+        noise.connect(bp).connect(gain).connect(this.masterGain);
+        noise.start(t);
+        noise.stop(t + 0.2);
+    }
+
     // --- Block place: quick thud ---
 
     playBlockPlace() {

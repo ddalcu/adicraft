@@ -81,16 +81,30 @@ export class Dragon {
         rightEye.position.set(0.5, 0.7, 5.5);
         group.add(rightEye);
 
-        // Left wing — keep as solid color (wing texture is triangular, poor box mapping)
-        const wingGeo = new THREE.BoxGeometry(7, 0.3, 4);
+        // Wings — built from inner + outer sections for more shape
         const wingMat = new THREE.MeshLambertMaterial({ color: 0x3A0070 });
-        this.leftWing = new THREE.Mesh(wingGeo, wingMat);
-        this.leftWing.position.set(-5, 0.5, -0.5);
+        const wingMatDark = new THREE.MeshLambertMaterial({ color: 0x280050 });
+
+        // Left wing (inner + outer tip)
+        this.leftWing = new THREE.Group();
+        const lwInner = new THREE.Mesh(new THREE.BoxGeometry(4, 0.3, 4), wingMat);
+        lwInner.position.set(-2, 0, 0);
+        this.leftWing.add(lwInner);
+        const lwTip = new THREE.Mesh(new THREE.BoxGeometry(3.5, 0.15, 3), wingMatDark);
+        lwTip.position.set(-5.5, 0, -0.3);
+        this.leftWing.add(lwTip);
+        this.leftWing.position.set(-1.5, 0.5, -0.5);
         group.add(this.leftWing);
 
         // Right wing
-        this.rightWing = new THREE.Mesh(wingGeo.clone(), wingMat.clone());
-        this.rightWing.position.set(5, 0.5, -0.5);
+        this.rightWing = new THREE.Group();
+        const rwInner = new THREE.Mesh(new THREE.BoxGeometry(4, 0.3, 4), wingMat.clone());
+        rwInner.position.set(2, 0, 0);
+        this.rightWing.add(rwInner);
+        const rwTip = new THREE.Mesh(new THREE.BoxGeometry(3.5, 0.15, 3), wingMatDark.clone());
+        rwTip.position.set(5.5, 0, -0.3);
+        this.rightWing.add(rwTip);
+        this.rightWing.position.set(1.5, 0.5, -0.5);
         group.add(this.rightWing);
 
         // Tail — use tail region
@@ -158,10 +172,14 @@ export class Dragon {
 
         this.mesh.position.copy(this.position);
 
-        // Wing animation
-        const wingFlap = Math.sin(performance.now() * 0.005) * 0.3;
+        // Wing animation — flap + fold
+        const t = performance.now() * 0.005;
+        const wingFlap = Math.sin(t) * 0.3;
+        const wingFold = Math.sin(t * 0.7) * 0.1;
         this.leftWing.rotation.z = wingFlap;
+        this.leftWing.rotation.y = wingFold;
         this.rightWing.rotation.z = -wingFlap;
+        this.rightWing.rotation.y = -wingFold;
 
         // Boss bar
         if (hud) {

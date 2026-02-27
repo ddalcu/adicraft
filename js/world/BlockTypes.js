@@ -3,264 +3,182 @@
 
 import { TILE_UV } from '../utils/TextureAtlas.js';
 
+// hardness: time in seconds to break by hand (0 = instant, Infinity = unbreakable)
+// preferredTool: tool type that mines fastest (null = any)
+// minTier: minimum tool tier required to get drops (null = none required)
+
 export const BLOCK_TYPES = {
     0: null, // air
     1: {
-        name: 'grass',
-        solid: true,
-        topColor: '#4CAF50',
-        topUV: TILE_UV.grass_top,
-        sideUV: TILE_UV.grass_side,
-        bottomUV: TILE_UV.dirt
+        name: 'grass', solid: true, topColor: '#4CAF50',
+        hardness: 0.6, preferredTool: 'shovel', minTier: null,
+        topUV: TILE_UV.grass_top, sideUV: TILE_UV.grass_side, bottomUV: TILE_UV.dirt
     },
     2: {
-        name: 'dirt',
-        solid: true,
-        topColor: '#8B6914',
-        topUV: TILE_UV.dirt,
-        sideUV: TILE_UV.dirt,
-        bottomUV: TILE_UV.dirt
+        name: 'dirt', solid: true, topColor: '#8B6914',
+        hardness: 0.5, preferredTool: 'shovel', minTier: null,
+        topUV: TILE_UV.dirt, sideUV: TILE_UV.dirt, bottomUV: TILE_UV.dirt
     },
     3: {
-        name: 'stone',
-        solid: true,
-        topColor: '#808080',
-        topUV: TILE_UV.stone,
-        sideUV: TILE_UV.stone,
-        bottomUV: TILE_UV.stone
+        name: 'stone', solid: true, topColor: '#808080',
+        hardness: 1.5, preferredTool: 'pickaxe', minTier: 'wood',
+        topUV: TILE_UV.stone, sideUV: TILE_UV.stone, bottomUV: TILE_UV.stone
     },
     4: {
-        name: 'wood',
-        solid: true,
-        topColor: '#B8860B',
-        topUV: TILE_UV.wood_top,
-        sideUV: TILE_UV.wood_side,
-        bottomUV: TILE_UV.wood_top
+        name: 'wood', solid: true, topColor: '#B8860B',
+        hardness: 2.0, preferredTool: 'axe', minTier: null,
+        topUV: TILE_UV.wood_top, sideUV: TILE_UV.wood_side, bottomUV: TILE_UV.wood_top
     },
     5: {
-        name: 'leaves',
-        solid: true,
-        topColor: '#228B22',
-        topUV: TILE_UV.leaves,
-        sideUV: TILE_UV.leaves,
-        bottomUV: TILE_UV.leaves
+        name: 'leaves', solid: true, topColor: '#228B22',
+        hardness: 0.2, preferredTool: null, minTier: null,
+        topUV: TILE_UV.leaves, sideUV: TILE_UV.leaves, bottomUV: TILE_UV.leaves
     },
     6: {
-        name: 'water',
-        solid: false,
-        topColor: '#3F76E4',
-        topUV: TILE_UV.water,
-        sideUV: TILE_UV.water,
-        bottomUV: TILE_UV.water
+        name: 'water', solid: false, topColor: '#3F76E4',
+        hardness: Infinity, preferredTool: null, minTier: null,
+        topUV: TILE_UV.water, sideUV: TILE_UV.water, bottomUV: TILE_UV.water
     },
     7: {
-        name: 'sand',
-        solid: true,
-        topColor: '#D2B48C',
-        topUV: TILE_UV.sand,
-        sideUV: TILE_UV.sand,
-        bottomUV: TILE_UV.sand
+        name: 'sand', solid: true, topColor: '#D2B48C',
+        hardness: 0.5, preferredTool: 'shovel', minTier: null,
+        topUV: TILE_UV.sand, sideUV: TILE_UV.sand, bottomUV: TILE_UV.sand
     },
     8: {
-        name: 'bedrock',
-        solid: true,
-        topColor: '#333333',
-        topUV: TILE_UV.bedrock,
-        sideUV: TILE_UV.bedrock,
-        bottomUV: TILE_UV.bedrock
+        name: 'bedrock', solid: true, topColor: '#333333',
+        hardness: Infinity, preferredTool: null, minTier: null,
+        topUV: TILE_UV.bedrock, sideUV: TILE_UV.bedrock, bottomUV: TILE_UV.bedrock
     },
     9: {
-        name: 'coal_ore',
-        solid: true,
-        topColor: '#2C2C2C',
-        topUV: TILE_UV.coal_ore,
-        sideUV: TILE_UV.coal_ore,
-        bottomUV: TILE_UV.coal_ore
+        name: 'coal_ore', solid: true, topColor: '#2C2C2C',
+        hardness: 3.0, preferredTool: 'pickaxe', minTier: 'wood',
+        topUV: TILE_UV.coal_ore, sideUV: TILE_UV.coal_ore, bottomUV: TILE_UV.coal_ore
     },
     10: {
-        name: 'iron_ore',
-        solid: true,
-        topColor: '#C8A882',
-        topUV: TILE_UV.iron_ore,
-        sideUV: TILE_UV.iron_ore,
-        bottomUV: TILE_UV.iron_ore
+        name: 'iron_ore', solid: true, topColor: '#C8A882',
+        hardness: 3.0, preferredTool: 'pickaxe', minTier: 'stone',
+        topUV: TILE_UV.iron_ore, sideUV: TILE_UV.iron_ore, bottomUV: TILE_UV.iron_ore
     },
     11: {
-        name: 'gold_ore',
-        solid: true,
-        topColor: '#FCEE4B',
-        topUV: TILE_UV.gold_ore,
-        sideUV: TILE_UV.gold_ore,
-        bottomUV: TILE_UV.gold_ore
+        name: 'gold_ore', solid: true, topColor: '#FCEE4B',
+        hardness: 3.0, preferredTool: 'pickaxe', minTier: 'iron',
+        topUV: TILE_UV.gold_ore, sideUV: TILE_UV.gold_ore, bottomUV: TILE_UV.gold_ore
     },
     12: {
-        name: 'diamond_ore',
-        solid: true,
-        topColor: '#5DECF5',
-        topUV: TILE_UV.diamond_ore,
-        sideUV: TILE_UV.diamond_ore,
-        bottomUV: TILE_UV.diamond_ore
+        name: 'diamond_ore', solid: true, topColor: '#5DECF5',
+        hardness: 3.0, preferredTool: 'pickaxe', minTier: 'iron',
+        topUV: TILE_UV.diamond_ore, sideUV: TILE_UV.diamond_ore, bottomUV: TILE_UV.diamond_ore
     },
     13: {
-        name: 'snow',
-        solid: true,
-        topColor: '#F0F0F0',
-        topUV: TILE_UV.snow,
-        sideUV: TILE_UV.snow,
-        bottomUV: TILE_UV.snow
+        name: 'snow', solid: true, topColor: '#F0F0F0',
+        hardness: 0.2, preferredTool: 'shovel', minTier: null,
+        topUV: TILE_UV.snow, sideUV: TILE_UV.snow, bottomUV: TILE_UV.snow
     },
     14: {
-        name: 'ice',
-        solid: true,
-        topColor: '#A5D6F5',
-        topUV: TILE_UV.ice,
-        sideUV: TILE_UV.ice,
-        bottomUV: TILE_UV.ice
+        name: 'ice', solid: true, topColor: '#A5D6F5',
+        hardness: 0.5, preferredTool: 'pickaxe', minTier: null,
+        topUV: TILE_UV.ice, sideUV: TILE_UV.ice, bottomUV: TILE_UV.ice
     },
     15: {
-        name: 'spruce_log',
-        solid: true,
-        topColor: '#4A3728',
-        topUV: TILE_UV.spruce_log_top,
-        sideUV: TILE_UV.spruce_log,
-        bottomUV: TILE_UV.spruce_log_top
+        name: 'spruce_log', solid: true, topColor: '#4A3728',
+        hardness: 2.0, preferredTool: 'axe', minTier: null,
+        topUV: TILE_UV.spruce_log_top, sideUV: TILE_UV.spruce_log, bottomUV: TILE_UV.spruce_log_top
     },
     16: {
-        name: 'spruce_leaves',
-        solid: true,
-        topColor: '#3E6B3E',
-        topUV: TILE_UV.spruce_leaves,
-        sideUV: TILE_UV.spruce_leaves,
-        bottomUV: TILE_UV.spruce_leaves
+        name: 'spruce_leaves', solid: true, topColor: '#3E6B3E',
+        hardness: 0.2, preferredTool: null, minTier: null,
+        topUV: TILE_UV.spruce_leaves, sideUV: TILE_UV.spruce_leaves, bottomUV: TILE_UV.spruce_leaves
     },
     17: {
-        name: 'birch_log',
-        solid: true,
-        topColor: '#D5C98C',
-        topUV: TILE_UV.birch_log_top,
-        sideUV: TILE_UV.birch_log,
-        bottomUV: TILE_UV.birch_log_top
+        name: 'birch_log', solid: true, topColor: '#D5C98C',
+        hardness: 2.0, preferredTool: 'axe', minTier: null,
+        topUV: TILE_UV.birch_log_top, sideUV: TILE_UV.birch_log, bottomUV: TILE_UV.birch_log_top
     },
     18: {
-        name: 'birch_leaves',
-        solid: true,
-        topColor: '#6B8E23',
-        topUV: TILE_UV.birch_leaves,
-        sideUV: TILE_UV.birch_leaves,
-        bottomUV: TILE_UV.birch_leaves
+        name: 'birch_leaves', solid: true, topColor: '#6B8E23',
+        hardness: 0.2, preferredTool: null, minTier: null,
+        topUV: TILE_UV.birch_leaves, sideUV: TILE_UV.birch_leaves, bottomUV: TILE_UV.birch_leaves
     },
     19: {
-        name: 'jungle_log',
-        solid: true,
-        topColor: '#6B5839',
-        topUV: TILE_UV.wood_top,
-        sideUV: TILE_UV.jungle_log,
-        bottomUV: TILE_UV.wood_top
+        name: 'jungle_log', solid: true, topColor: '#6B5839',
+        hardness: 2.0, preferredTool: 'axe', minTier: null,
+        topUV: TILE_UV.wood_top, sideUV: TILE_UV.jungle_log, bottomUV: TILE_UV.wood_top
     },
     20: {
-        name: 'jungle_leaves',
-        solid: true,
-        topColor: '#1E8C1E',
-        topUV: TILE_UV.jungle_leaves,
-        sideUV: TILE_UV.jungle_leaves,
-        bottomUV: TILE_UV.jungle_leaves
+        name: 'jungle_leaves', solid: true, topColor: '#1E8C1E',
+        hardness: 0.2, preferredTool: null, minTier: null,
+        topUV: TILE_UV.jungle_leaves, sideUV: TILE_UV.jungle_leaves, bottomUV: TILE_UV.jungle_leaves
     },
     21: {
-        name: 'cactus',
-        solid: true,
-        topColor: '#2E7D32',
-        topUV: TILE_UV.cactus_top,
-        sideUV: TILE_UV.cactus_side,
-        bottomUV: TILE_UV.cactus_bottom
+        name: 'cactus', solid: true, topColor: '#2E7D32',
+        hardness: 0.4, preferredTool: null, minTier: null,
+        topUV: TILE_UV.cactus_top, sideUV: TILE_UV.cactus_side, bottomUV: TILE_UV.cactus_bottom
     },
     22: {
-        name: 'obsidian',
-        solid: true,
-        topColor: '#1B0A2E',
-        topUV: TILE_UV.obsidian,
-        sideUV: TILE_UV.obsidian,
-        bottomUV: TILE_UV.obsidian
+        name: 'obsidian', solid: true, topColor: '#1B0A2E',
+        hardness: 50.0, preferredTool: 'pickaxe', minTier: 'diamond',
+        topUV: TILE_UV.obsidian, sideUV: TILE_UV.obsidian, bottomUV: TILE_UV.obsidian
     },
     23: {
-        name: 'end_stone',
-        solid: true,
-        topColor: '#DBD3A0',
-        topUV: TILE_UV.end_stone,
-        sideUV: TILE_UV.end_stone,
-        bottomUV: TILE_UV.end_stone
+        name: 'end_stone', solid: true, topColor: '#DBD3A0',
+        hardness: 3.0, preferredTool: 'pickaxe', minTier: 'wood',
+        topUV: TILE_UV.end_stone, sideUV: TILE_UV.end_stone, bottomUV: TILE_UV.end_stone
     },
     24: {
-        name: 'end_stone_bricks',
-        solid: true,
-        topColor: '#D6CEA0',
-        topUV: TILE_UV.end_stone_bricks,
-        sideUV: TILE_UV.end_stone_bricks,
-        bottomUV: TILE_UV.end_stone_bricks
+        name: 'end_stone_bricks', solid: true, topColor: '#D6CEA0',
+        hardness: 3.0, preferredTool: 'pickaxe', minTier: 'wood',
+        topUV: TILE_UV.end_stone_bricks, sideUV: TILE_UV.end_stone_bricks, bottomUV: TILE_UV.end_stone_bricks
     },
     25: {
-        name: 'purpur_block',
-        solid: true,
-        topColor: '#A477A4',
-        topUV: TILE_UV.purpur_block,
-        sideUV: TILE_UV.purpur_block,
-        bottomUV: TILE_UV.purpur_block
+        name: 'purpur_block', solid: true, topColor: '#A477A4',
+        hardness: 1.5, preferredTool: 'pickaxe', minTier: 'wood',
+        topUV: TILE_UV.purpur_block, sideUV: TILE_UV.purpur_block, bottomUV: TILE_UV.purpur_block
     },
     26: {
-        name: 'chorus_plant',
-        solid: true,
-        topColor: '#7B5E7B',
-        topUV: TILE_UV.chorus_plant,
-        sideUV: TILE_UV.chorus_plant,
-        bottomUV: TILE_UV.chorus_plant
+        name: 'chorus_plant', solid: true, topColor: '#7B5E7B',
+        hardness: 0.4, preferredTool: null, minTier: null,
+        topUV: TILE_UV.chorus_plant, sideUV: TILE_UV.chorus_plant, bottomUV: TILE_UV.chorus_plant
     },
     27: {
-        name: 'chorus_flower',
-        solid: true,
-        topColor: '#9B7D9B',
-        topUV: TILE_UV.chorus_flower,
-        sideUV: TILE_UV.chorus_flower,
-        bottomUV: TILE_UV.chorus_flower
+        name: 'chorus_flower', solid: true, topColor: '#9B7D9B',
+        hardness: 0.4, preferredTool: null, minTier: null,
+        topUV: TILE_UV.chorus_flower, sideUV: TILE_UV.chorus_flower, bottomUV: TILE_UV.chorus_flower
     },
     28: {
-        name: 'end_portal_frame',
-        solid: true,
-        topColor: '#3B6B5E',
-        topUV: TILE_UV.end_portal_frame,
-        sideUV: TILE_UV.end_portal_frame,
-        bottomUV: TILE_UV.end_stone
+        name: 'end_portal_frame', solid: true, topColor: '#3B6B5E',
+        hardness: Infinity, preferredTool: null, minTier: null,
+        topUV: TILE_UV.end_portal_frame, sideUV: TILE_UV.end_portal_frame, bottomUV: TILE_UV.end_stone
     },
     29: {
-        name: 'end_portal',
-        solid: false,
-        topColor: '#1B0033',
-        topUV: TILE_UV.end_portal,
-        sideUV: TILE_UV.end_portal,
-        bottomUV: TILE_UV.end_portal
+        name: 'end_portal', solid: false, topColor: '#1B0033',
+        hardness: Infinity, preferredTool: null, minTier: null,
+        topUV: TILE_UV.end_portal, sideUV: TILE_UV.end_portal, bottomUV: TILE_UV.end_portal
     },
     30: {
-        name: 'podzol',
-        solid: true,
-        topColor: '#6B4C2A',
-        topUV: TILE_UV.podzol_top,
-        sideUV: TILE_UV.podzol_side,
-        bottomUV: TILE_UV.dirt
+        name: 'podzol', solid: true, topColor: '#6B4C2A',
+        hardness: 0.5, preferredTool: 'shovel', minTier: null,
+        topUV: TILE_UV.podzol_top, sideUV: TILE_UV.podzol_side, bottomUV: TILE_UV.dirt
     },
     31: {
-        name: 'mycelium',
-        solid: true,
-        topColor: '#8B7B8B',
-        topUV: TILE_UV.mycelium_top,
-        sideUV: TILE_UV.mycelium_side,
-        bottomUV: TILE_UV.dirt
+        name: 'mycelium', solid: true, topColor: '#8B7B8B',
+        hardness: 0.6, preferredTool: 'shovel', minTier: null,
+        topUV: TILE_UV.mycelium_top, sideUV: TILE_UV.mycelium_side, bottomUV: TILE_UV.dirt
     },
     32: {
-        name: 'waystone',
-        solid: true,
-        topColor: '#5CE1E6',
-        topUV: TILE_UV.waystone,
-        sideUV: TILE_UV.waystone,
-        bottomUV: TILE_UV.waystone
-    }
+        name: 'waystone', solid: true, topColor: '#5CE1E6',
+        hardness: 1.0, preferredTool: 'pickaxe', minTier: null,
+        topUV: TILE_UV.waystone, sideUV: TILE_UV.waystone, bottomUV: TILE_UV.waystone
+    },
+    33: {
+        name: 'planks', solid: true, topColor: '#C49A6C',
+        hardness: 2.0, preferredTool: 'axe', minTier: null,
+        topUV: TILE_UV.planks, sideUV: TILE_UV.planks, bottomUV: TILE_UV.planks
+    },
+    34: {
+        name: 'crafting_table', solid: true, topColor: '#BC8B57',
+        hardness: 2.5, preferredTool: 'axe', minTier: null,
+        topUV: TILE_UV.crafting_table_top, sideUV: TILE_UV.crafting_table_side, bottomUV: TILE_UV.planks
+    },
 };
 
 export function isSolid(blockId) {

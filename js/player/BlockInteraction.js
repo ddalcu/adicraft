@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { REACH_DISTANCE } from '../utils/constants.js';
-import { isSolid } from '../world/BlockTypes.js';
+import { isSolid, BLOCK_TYPES } from '../world/BlockTypes.js';
+import { isBlock, getItemDef, TIER_LEVELS } from '../items/ItemRegistry.js';
+import { ItemStack } from '../items/ItemStack.js';
 
 export class BlockInteraction {
     constructor(camera, getWorld, scene, input, sound) {
@@ -9,9 +11,10 @@ export class BlockInteraction {
         this.scene = scene;
         this.input = input;
         this.sound = sound;
+        this.inventory = null; // set from main.js
 
         this.selectedSlot = 0;
-        this.selectedBlockType = 1; // grass
+        this.selectedBlockType = 1; // kept for backward compat
 
         // Block highlight wireframe
         this.highlight = this._createHighlight();
@@ -21,8 +24,17 @@ export class BlockInteraction {
         this.targetBlock = null;
         this.targetNormal = null;
 
-        // Network callback: if set, block changes route through this instead of direct world.setBlock
+        // Mining progress
+        this._miningTarget = null; // {x,y,z} of block being mined
+        this._miningProgress = 0;
+        this._miningTime = 0;
+        this._miningCanHarvest = true;
+
+        // Network callback
         this.onBlockChange = null;
+
+        // Crafting table interaction callback
+        this.onOpenCraftingTable = null;
 
         // Track last placed block for waystone detection
         this._lastPlacedBlock = null;
@@ -31,6 +43,72 @@ export class BlockInteraction {
 
     get world() {
         return this.getWorld();
+    }
+
+    getHeldBlockType() {
+        if (this.inventory) {
+            const stack = this.inventory.getHotbarSlot(this.selectedSlot);
+            if (stack && !stack.isEmpty() && isBlock(stack.itemId)) {
+                return stack.itemId;
+            }
+            return 0;
+        }
+        return this.selectedBlockType;
+    }
+
+    getHeldItemId() {
+        if (this.inventory) {
+            const stack = this.inventory.getHotbarSlot(this.selectedSlot);
+            return (stack && !stack.isEmpty()) ? stack.itemId : 0;
+        }
+        return this.selectedBlockType;
+    }
+
+    // Get tool definition if holding a tool
+    _getHeldTool() {
+        if (!this.inventory) return null;
+        const stack = this.inventory.getHotbarSlot(this.selectedSlot);
+        if (!stack || stack.isEmpty()) return null;
+        const def = getItemDef(stack.itemId);
+        if (!def || def.category !== 'tool') return null;
+        return def;
+    }
+
+    // Get mining time for a block given current tool
+    _getMiningTime(blockId) {
+        const blockDef = BLOCK_TYPES[blockId];
+        if (!blockDef) return 0.5;
+
+        const hardness = blockDef.hardness || 0.5;
+        if (hardness === Infinity) return Infinity;
+
+        const tool = this._getHeldTool();
+        let speedMultiplier = 1.0;
+        let canHarvest = true;
+
+        // Correct tool bonus
+        if (tool && tool.toolType === blockDef.preferredTool) {
+            speedMultiplier = tool.miningSpeed;
+        }
+
+        // Check tier requirement
+        if (blockDef.minTier) {
+            const required = TIER_LEVELS[blockDef.minTier] ?? 0;
+            const hasTier = tool ? (TIER_LEVELS[tool.tier] ?? -1) : -1;
+            if (hasTier < required) {
+                canHarvest = false;
+                speedMultiplier = 0.3; // much slower without correct tier
+            }
+        }
+
+        this._miningCanHarvest = canHarvest;
+        return hardness / speedMultiplier;
+    }
+
+    // Get mining progress as 0-1
+    getMiningProgress() {
+        if (!this._miningTarget || this._miningTime <= 0) return 0;
+        return Math.min(1, this._miningProgress / this._miningTime);
     }
 
     _createHighlight() {
@@ -42,23 +120,74 @@ export class BlockInteraction {
         return line;
     }
 
-    update() {
+    update(dt) {
         this._raycast();
 
         const clicks = this.input.consumeClicks();
-        if (this.targetBlock) {
-            if (clicks.left) {
-                this._breakBlock();
-            }
-            if (clicks.right) {
+
+        // Handle right click
+        if (this.targetBlock && clicks.right) {
+            const { x, y, z } = this.targetBlock;
+            const blockId = this.world.getBlock(x, y, z);
+            if (blockId === 34 && this.onOpenCraftingTable) {
+                this.onOpenCraftingTable();
+            } else {
                 this._placeBlock();
+            }
+        }
+
+        // Handle left click (mining)
+        if (this.targetBlock && (clicks.left || this.input.mouseLeft)) {
+            const { x, y, z } = this.targetBlock;
+
+            // Check if we're mining a new block
+            if (!this._miningTarget ||
+                this._miningTarget.x !== x ||
+                this._miningTarget.y !== y ||
+                this._miningTarget.z !== z) {
+                // Start mining new block
+                const blockId = this.world.getBlock(x, y, z);
+                this._miningTarget = { x, y, z };
+                this._miningProgress = 0;
+                this._miningTime = this._getMiningTime(blockId);
+            }
+
+            // Advance mining
+            if (dt > 0) {
+                this._miningProgress += dt;
+            } else {
+                // Fallback for when dt isn't passed (single click)
+                this._miningProgress += 0.016;
+            }
+
+            // Darken highlight based on progress
+            const progress = this.getMiningProgress();
+            if (this.highlight.material) {
+                const darkness = Math.floor(progress * 5);
+                const colors = [0x000000, 0x333300, 0x666600, 0x996600, 0xCC3300, 0xFF0000];
+                this.highlight.material.color.setHex(colors[Math.min(darkness, 5)]);
+            }
+
+            // Check if mining complete
+            if (this._miningProgress >= this._miningTime && this._miningTime !== Infinity) {
+                this._breakBlock();
+                this._miningTarget = null;
+                this._miningProgress = 0;
+            }
+        } else {
+            // Not mining — reset
+            if (this._miningTarget) {
+                this._miningTarget = null;
+                this._miningProgress = 0;
+                if (this.highlight.material) {
+                    this.highlight.material.color.setHex(0x000000);
+                }
             }
         }
     }
 
     _raycast() {
         const world = this.world;
-        // DDA voxel traversal
         const origin = this.camera.position.clone();
         const direction = new THREE.Vector3(0, 0, -1);
         direction.applyQuaternion(this.camera.quaternion);
@@ -133,16 +262,45 @@ export class BlockInteraction {
     _breakBlock() {
         if (!this.targetBlock) return;
         const { x, y, z } = this.targetBlock;
+        const blockId = this.world.getBlock(x, y, z);
+
         if (this.onBlockChange) {
             this.onBlockChange(x, y, z, 0);
         } else {
             this.world.setBlock(x, y, z, 0);
         }
+
+        // Add broken block to inventory (only if can harvest)
+        if (this.inventory && blockId > 0 && this._miningCanHarvest) {
+            this.inventory.addItem(blockId, 1);
+        }
+
+        // Consume tool durability
+        if (this.inventory) {
+            const stack = this.inventory.getHotbarSlot(this.selectedSlot);
+            if (stack && !stack.isEmpty() && stack.durability >= 0) {
+                stack.durability--;
+                if (stack.durability <= 0) {
+                    this.inventory.slots[this.selectedSlot] = ItemStack.empty();
+                    if (this.sound) this.sound.playToolBreak();
+                }
+                if (this.inventory.onChange) this.inventory.onChange();
+            }
+        }
+
         if (this.sound) this.sound.playBlockBreak();
     }
 
     _placeBlock() {
         if (!this.targetBlock || !this.targetNormal) return;
+
+        const blockType = this.getHeldBlockType();
+        if (blockType === 0) return;
+
+        if (this.inventory) {
+            const stack = this.inventory.getHotbarSlot(this.selectedSlot);
+            if (!stack || stack.isEmpty()) return;
+        }
 
         const px = this.targetBlock.x + this.targetNormal.x;
         const py = this.targetBlock.y + this.targetNormal.y;
@@ -164,14 +322,17 @@ export class BlockInteraction {
         }
 
         if (this.onBlockChange) {
-            this.onBlockChange(px, py, pz, this.selectedBlockType);
+            this.onBlockChange(px, py, pz, blockType);
         } else {
-            this.world.setBlock(px, py, pz, this.selectedBlockType);
+            this.world.setBlock(px, py, pz, blockType);
         }
 
-        // Track placed block for waystone detection
-        this._lastPlacedBlock = this.selectedBlockType;
+        this._lastPlacedBlock = blockType;
         this._lastPlacedPos = new THREE.Vector3(px, py, pz);
+
+        if (this.inventory) {
+            this.inventory.removeFromSlot(this.selectedSlot, 1);
+        }
 
         if (this.sound) this.sound.playBlockPlace();
     }

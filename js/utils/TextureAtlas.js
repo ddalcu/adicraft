@@ -51,7 +51,10 @@ export const TILE_UV = {
     mycelium_side:  { col: 6, row: 4 },
     grass_snow_side:{ col: 7, row: 4 },
     // Row 5
-    waystone:       { col: 0, row: 5 },
+    waystone:           { col: 0, row: 5 },
+    planks:             { col: 1, row: 5 },
+    crafting_table_top: { col: 2, row: 5 },
+    crafting_table_side:{ col: 3, row: 5 },
 };
 
 const GRASS_TINT = '#7CBD6B';
@@ -123,7 +126,8 @@ export class TextureAtlas {
             purpurBlock, chorusPlant, chorusFlower,
             podzolTop, podzolSide,
             myceliumTop, myceliumSide,
-            grassSnowSide
+            grassSnowSide,
+            oakPlanks, craftingTableTop, craftingTableSide
         ] = await Promise.all([
             loadImage(`${blockPath}/grass_block_top.png`),
             loadImage(`${blockPath}/grass_block_side.png`),
@@ -163,6 +167,9 @@ export class TextureAtlas {
             loadImage(`${blockPath}/mycelium_top.png`),
             loadImage(`${blockPath}/mycelium_side.png`),
             loadImage(`${blockPath}/grass_side_snowed.png`),
+            loadImage(`${blockPath}/oak_planks.png`),
+            loadImage(`${blockPath}/crafting_table_top.png`),
+            loadImage(`${blockPath}/crafting_table_side.png`),
         ]);
 
         // Tint grayscale textures
@@ -247,6 +254,9 @@ export class TextureAtlas {
         // Row 5
         const waystoneTile = createSolidTile('#5CE1E6');
         drawTile(waystoneTile, 0, 5);
+        drawTile(oakPlanks, 1, 5);
+        drawTile(craftingTableTop, 2, 5);
+        drawTile(craftingTableSide, 3, 5);
 
         // Store canvas reference for hotbar texture extraction
         this._canvas = canvas;

@@ -23,6 +23,13 @@ import { EntityTextureManager } from './entities/EntityTextureManager.js';
 import { SyncManager } from './network/SyncManager.js';
 import { RemotePlayer } from './network/RemotePlayer.js';
 import { MultiplayerUI } from './network/MultiplayerUI.js';
+import { Inventory } from './items/Inventory.js';
+import { InventoryUI } from './ui/InventoryUI.js';
+import { CraftingUI } from './ui/CraftingUI.js';
+import { isBlock, getItemDef } from './items/ItemRegistry.js';
+
+// Expose BLOCK_TYPES globally for InventoryUI tile cache
+window._BLOCK_TYPES = BLOCK_TYPES;
 
 // DOM elements
 const canvas = document.getElementById('game-canvas');
@@ -101,6 +108,23 @@ const getWorld = () => dimManager.getActiveWorld();
 const player = new Player(engine.camera, input, getWorld, sound);
 const interaction = new BlockInteraction(engine.camera, getWorld, engine.scene, input, sound);
 
+// Inventory system
+let inventory = Inventory.createDefault();
+interaction.inventory = inventory;
+
+const inventoryUI = new InventoryUI(inventory, () => overworldWorld.atlas);
+const craftingUI = new CraftingUI(inventory, () => overworldWorld.atlas);
+
+// Sync hotbar display when inventory changes
+inventory.onChange = () => {
+    updateHotbar();
+};
+
+// Crafting table interaction: right-click opens 3×3 crafting UI
+interaction.onOpenCraftingTable = () => {
+    if (!inventoryUI.isOpen && !craftingUI.isOpen) craftingUI.open();
+};
+
 // Entity manager (overworld + outer end mobs)
 const entityManager = new EntityManager(engine.scene, getWorld);
 
@@ -111,6 +135,11 @@ let waystonePos = null;
 entityManager.onMobDrop = (blockId, x, y, z) => {
     const world = getWorld();
     world.setBlock(x, y, z, blockId);
+};
+
+// Mob ambient sounds
+entityManager.onPlaySound = (type) => {
+    sound.playMobSound(type);
 };
 
 // Weapon system
@@ -346,16 +375,18 @@ async function handleCommand(text) {
         }
         case 'give': {
             if (!checkAdminOrOp()) break;
-            if (!args[0]) { addSystemMessage('Usage: /give <blockId>'); break; }
-            const blockId = parseInt(args[0]);
-            if (isNaN(blockId) || !BLOCK_TYPES[blockId]) {
-                addSystemMessage(`Invalid block ID: ${args[0]}`);
+            if (!args[0]) { addSystemMessage('Usage: /give <itemId> [count]'); break; }
+            const giveId = parseInt(args[0]);
+            const giveCount = parseInt(args[1]) || 64;
+            const giveDef = getItemDef(giveId);
+            if (isNaN(giveId) || !giveDef) {
+                addSystemMessage(`Invalid item ID: ${args[0]}`);
                 break;
             }
-            hotbarBlocks[interaction.selectedSlot] = blockId;
-            buildHotbarTileCache();
+            const durability = giveDef.baseDurability || -1;
+            inventory.addItem(giveId, giveCount, durability);
             updateHotbar();
-            addSystemMessage(`Set current slot to ${BLOCK_TYPES[blockId].name} (${blockId}).`);
+            addSystemMessage(`Gave ${giveCount}x ${giveDef.name} (${giveId}).`);
             break;
         }
         case 'kick': {
@@ -416,9 +447,7 @@ let endCrystals = [];
 let dragon = null;
 let dragonDefeated = false;
 
-// Hotbar setup — 9 slots like Minecraft
-const hotbarBlocks = [1, 2, 3, 4, 5, 7, 24, 25, 32];
-// grass, dirt, stone, wood, leaves, sand, end_stone_bricks, purpur_block, waystone
+// Hotbar setup — 9 slots, reads from inventory slots 0-8
 const hotbarSlots = document.querySelectorAll('.hotbar-slot');
 const hotbarBlockEls = document.querySelectorAll('.hotbar-block');
 
@@ -430,13 +459,32 @@ function updateHotbar() {
         slot.classList.toggle('selected', i === interaction.selectedSlot);
     });
     hotbarBlockEls.forEach((el, i) => {
-        const blockId = hotbarBlocks[i];
-        if (hotbarTileCache.has(blockId)) {
-            el.style.backgroundImage = `url(${hotbarTileCache.get(blockId)})`;
+        const stack = inventory.getHotbarSlot(i);
+        const itemId = stack && !stack.isEmpty() ? stack.itemId : 0;
+
+        // Clear previous
+        el.style.backgroundImage = 'none';
+        el.style.backgroundColor = 'transparent';
+        el.textContent = '';
+
+        if (itemId === 0) return;
+
+        if (hotbarTileCache.has(itemId)) {
+            el.style.backgroundImage = `url(${hotbarTileCache.get(itemId)})`;
         } else {
-            // Fallback: use topColor from block type
-            const bt = BLOCK_TYPES[blockId];
-            if (bt) el.style.backgroundColor = bt.topColor;
+            const def = getItemDef(itemId);
+            if (def) el.style.backgroundColor = def.color || '#888';
+        }
+
+        // Show count if > 1
+        if (stack.count > 1) {
+            el.textContent = stack.count;
+            el.style.color = '#fff';
+            el.style.fontSize = '10px';
+            el.style.textShadow = '1px 1px 0 #333';
+            el.style.display = 'flex';
+            el.style.alignItems = 'flex-end';
+            el.style.justifyContent = 'flex-end';
         }
     });
 }
@@ -444,11 +492,12 @@ function updateHotbar() {
 function buildHotbarTileCache() {
     const atlas = overworldWorld.atlas;
     if (!atlas || !atlas._canvas) return;
-    for (const blockId of hotbarBlocks) {
-        const bt = BLOCK_TYPES[blockId];
-        if (!bt) continue;
+    // Cache all block types we might have
+    for (let id = 1; id <= 255; id++) {
+        const bt = BLOCK_TYPES[id];
+        if (!bt || !bt.topUV) continue;
         const { col, row } = bt.topUV;
-        hotbarTileCache.set(blockId, atlas.getTileDataURL(col, row));
+        hotbarTileCache.set(id, atlas.getTileDataURL(col, row));
     }
 }
 
@@ -545,7 +594,6 @@ if (isMobile) {
         slot.addEventListener('touchstart', (e) => {
             e.preventDefault();
             interaction.selectedSlot = i;
-            interaction.selectedBlockType = hotbarBlocks[i];
             updateHotbar();
         }, { passive: false });
     });
@@ -575,13 +623,33 @@ if (isMobile) {
     });
 }
 
-// Number keys for block selection (1-9)
+// Number keys for block selection (1-9) + E for inventory + Escape to close UI
 document.addEventListener('keydown', (e) => {
     const num = parseInt(e.key);
     if (num >= 1 && num <= 9) {
         interaction.selectedSlot = num - 1;
-        interaction.selectedBlockType = hotbarBlocks[num - 1];
         updateHotbar();
+    }
+    if (e.code === 'KeyE' && !chatOpen) {
+        e.preventDefault();
+        if (craftingUI.isOpen) {
+            craftingUI.close();
+            requestPointerLock();
+        } else if (inventoryUI.isOpen) {
+            inventoryUI.close();
+            requestPointerLock();
+        } else {
+            inventoryUI.open();
+        }
+    }
+    if (e.code === 'Escape') {
+        if (craftingUI.isOpen) {
+            craftingUI.close();
+            e.preventDefault();
+        } else if (inventoryUI.isOpen) {
+            inventoryUI.close();
+            e.preventDefault();
+        }
     }
 });
 
@@ -734,6 +802,7 @@ function savePlayerState() {
         health: player.health,
         dimension: dimManager.getActiveName(),
         hotbarSlot: interaction.selectedSlot,
+        inventory: inventory.toJSON(),
     });
 }
 
@@ -763,9 +832,15 @@ function restorePlayerState() {
     if (state.health !== undefined) {
         player.health = state.health;
     }
+    if (state.inventory) {
+        inventory = Inventory.fromJSON(state.inventory);
+        interaction.inventory = inventory;
+        inventoryUI.inventory = inventory;
+        inventory.onChange = () => updateHotbar();
+        craftingUI.inventory = inventory;
+    }
     if (state.hotbarSlot !== undefined) {
         interaction.selectedSlot = state.hotbarSlot;
-        interaction.selectedBlockType = hotbarBlocks[state.hotbarSlot];
         updateHotbar();
     }
 }
@@ -816,6 +891,14 @@ engine.onUpdate((dt) => {
         return;
     }
 
+    // Inventory/crafting open: skip player logic (still update world + entities)
+    if (inventoryUI.isOpen || craftingUI.isOpen) {
+        const world = getWorld();
+        if (world) world.update(player.position);
+        hud.update(dt);
+        return;
+    }
+
     // Handle respawn
     if (player.dead) {
         if (input.wasJustPressed('KeyR')) {
@@ -856,7 +939,7 @@ engine.onUpdate((dt) => {
     }
 
     // Waystone teleport: if holding waystone slot, no target block in range, and a waystone exists
-    const holdingWaystone = hotbarBlocks[interaction.selectedSlot] === 32;
+    const holdingWaystone = interaction.getHeldItemId() === 32;
     if (!weaponMode && holdingWaystone && waystonePos && input.mouseRightDown && !interaction.targetBlock) {
         player.position.set(waystonePos.x + 0.5, waystonePos.y + 1, waystonePos.z + 0.5);
         player.velocity.set(0, 0, 0);
@@ -868,7 +951,7 @@ engine.onUpdate((dt) => {
         weapon.update(dt, input);
         input.consumeClicks();
     } else {
-        interaction.update();
+        interaction.update(dt);
     }
 
     // Track waystone placement
@@ -1115,6 +1198,7 @@ function connectAndStart(roomId, name) {
             <span class="key">Space</span><span class="action">Jump (double-tap: fly)</span>
             <span class="key">Shift</span><span class="action">Descend while flying</span>
             <span class="key">1-9</span><span class="action">Select hotbar slot</span>
+            <span class="key">E</span><span class="action">Open inventory</span>
             <span class="key">G</span><span class="action">Toggle gun mode</span>
             <span class="key">T</span><span class="action">Open chat (/worlds to switch)</span>
            </div>`;

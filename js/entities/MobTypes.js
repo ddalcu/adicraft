@@ -1,5 +1,6 @@
 // Data-driven mob definitions
 // Each mob type defines stats, behavior, box geometry, and texture UV mapping for rendering.
+// Box 'role' field identifies animatable parts for the EntityAnimator system.
 
 const TEX_BASE = 'texturepacks/Default/assets/minecraft/textures/entity';
 
@@ -16,20 +17,22 @@ export const MOB_TYPES = {
         height: 1.8,
         texture: `${TEX_BASE}/zombie/zombie.png`,
         textureSize: [64, 64],
-        // Box parts: {offset [x,y,z], size [w,h,d], color, uv {u,v,w,h,d}}
+        ambientSound: 'zombie',
+        drops: [350], // rotten_flesh
+        // Box parts: {offset [x,y,z], size [w,h,d], color, role, uv {u,v,w,h,d}}
         boxes: [
             { offset: [0, 0.9, 0], size: [0.5, 0.7, 0.3], color: 0x4A7A2E,
-              uv: { u: 16, v: 16, w: 8, h: 12, d: 4 } },       // body
+              role: 'body', uv: { u: 16, v: 16, w: 8, h: 12, d: 4 } },
             { offset: [0, 1.55, 0], size: [0.4, 0.4, 0.4], color: 0x4A7A2E,
-              uv: { u: 0, v: 0, w: 8, h: 8, d: 8 } },          // head
+              role: 'head', uv: { u: 0, v: 0, w: 8, h: 8, d: 8 } },
             { offset: [-0.35, 0.9, 0], size: [0.2, 0.6, 0.2], color: 0x4A7A2E,
-              uv: { u: 40, v: 16, w: 4, h: 12, d: 4 } },       // right arm
+              role: 'arm_right', uv: { u: 40, v: 16, w: 4, h: 12, d: 4 } },
             { offset: [0.35, 0.9, 0], size: [0.2, 0.6, 0.2], color: 0x4A7A2E,
-              uv: { u: 32, v: 48, w: 4, h: 12, d: 4 } },       // left arm
+              role: 'arm_left', uv: { u: 32, v: 48, w: 4, h: 12, d: 4 } },
             { offset: [-0.15, 0.15, 0], size: [0.2, 0.7, 0.2], color: 0x2B4A8C,
-              uv: { u: 0, v: 16, w: 4, h: 12, d: 4 } },        // right leg
+              role: 'leg_right', uv: { u: 0, v: 16, w: 4, h: 12, d: 4 } },
             { offset: [0.15, 0.15, 0], size: [0.2, 0.7, 0.2], color: 0x2B4A8C,
-              uv: { u: 16, v: 48, w: 4, h: 12, d: 4 } },       // left leg
+              role: 'leg_left', uv: { u: 16, v: 48, w: 4, h: 12, d: 4 } },
         ]
     },
     skeleton: {
@@ -44,19 +47,21 @@ export const MOB_TYPES = {
         height: 1.8,
         texture: `${TEX_BASE}/skeleton/skeleton.png`,
         textureSize: [64, 32],
+        ambientSound: 'skeleton',
+        drops: [351], // bone
         boxes: [
             { offset: [0, 0.9, 0], size: [0.4, 0.7, 0.25], color: 0xC8C8B0,
-              uv: { u: 16, v: 16, w: 8, h: 12, d: 4 } },      // body
+              role: 'body', uv: { u: 16, v: 16, w: 8, h: 12, d: 4 } },
             { offset: [0, 1.55, 0], size: [0.4, 0.4, 0.4], color: 0xC8C8B0,
-              uv: { u: 0, v: 0, w: 8, h: 8, d: 8 } },          // head
+              role: 'head', uv: { u: 0, v: 0, w: 8, h: 8, d: 8 } },
             { offset: [-0.3, 0.9, 0], size: [0.15, 0.6, 0.15], color: 0xC8C8B0,
-              uv: { u: 40, v: 16, w: 4, h: 12, d: 4 } },       // right arm
+              role: 'arm_right', uv: { u: 40, v: 16, w: 4, h: 12, d: 4 } },
             { offset: [0.3, 0.9, 0], size: [0.15, 0.6, 0.15], color: 0xC8C8B0,
-              uv: { u: 40, v: 16, w: 4, h: 12, d: 4 } },       // left arm (mirrored)
+              role: 'arm_left', uv: { u: 40, v: 16, w: 4, h: 12, d: 4 } },
             { offset: [-0.12, 0.15, 0], size: [0.15, 0.7, 0.15], color: 0xC8C8B0,
-              uv: { u: 0, v: 16, w: 4, h: 12, d: 4 } },        // right leg
+              role: 'leg_right', uv: { u: 0, v: 16, w: 4, h: 12, d: 4 } },
             { offset: [0.12, 0.15, 0], size: [0.15, 0.7, 0.15], color: 0xC8C8B0,
-              uv: { u: 0, v: 16, w: 4, h: 12, d: 4 } },        // left leg (mirrored)
+              role: 'leg_left', uv: { u: 0, v: 16, w: 4, h: 12, d: 4 } },
         ]
     },
     pig: {
@@ -71,21 +76,23 @@ export const MOB_TYPES = {
         height: 0.9,
         texture: `${TEX_BASE}/pig/pig.png`,
         textureSize: [64, 32],
+        ambientSound: 'pig',
+        drops: [353], // raw_porkchop
         boxes: [
             { offset: [0, 0.45, 0], size: [0.6, 0.5, 0.8], color: 0xF0A0A0,
-              uv: { u: 28, v: 8, w: 10, h: 8, d: 8 } },        // body
+              role: 'body', uv: { u: 28, v: 8, w: 10, h: 8, d: 8 } },
             { offset: [0, 0.55, 0.5], size: [0.45, 0.4, 0.4], color: 0xF0A0A0,
-              uv: { u: 0, v: 0, w: 8, h: 8, d: 8 } },          // head
+              role: 'head', uv: { u: 0, v: 0, w: 8, h: 8, d: 8 } },
             { offset: [0, 0.6, 0.7], size: [0.2, 0.15, 0.1], color: 0xE08080,
-              uv: { u: 16, v: 17, w: 4, h: 3, d: 1 } },        // snout
-            { offset: [-0.2, 0.1, -0.2], size: [0.15, 0.3, 0.15], color: 0xF0A0A0,
-              uv: { u: 0, v: 16, w: 4, h: 6, d: 4 } },         // leg FL
-            { offset: [0.2, 0.1, -0.2], size: [0.15, 0.3, 0.15], color: 0xF0A0A0,
-              uv: { u: 0, v: 16, w: 4, h: 6, d: 4 } },         // leg FR
+              role: 'snout', uv: { u: 16, v: 17, w: 4, h: 3, d: 1 } },
             { offset: [-0.2, 0.1, 0.2], size: [0.15, 0.3, 0.15], color: 0xF0A0A0,
-              uv: { u: 0, v: 16, w: 4, h: 6, d: 4 } },         // leg BL
+              role: 'leg_front_left', uv: { u: 0, v: 16, w: 4, h: 6, d: 4 } },
             { offset: [0.2, 0.1, 0.2], size: [0.15, 0.3, 0.15], color: 0xF0A0A0,
-              uv: { u: 0, v: 16, w: 4, h: 6, d: 4 } },         // leg BR
+              role: 'leg_front_right', uv: { u: 0, v: 16, w: 4, h: 6, d: 4 } },
+            { offset: [-0.2, 0.1, -0.2], size: [0.15, 0.3, 0.15], color: 0xF0A0A0,
+              role: 'leg_back_left', uv: { u: 0, v: 16, w: 4, h: 6, d: 4 } },
+            { offset: [0.2, 0.1, -0.2], size: [0.15, 0.3, 0.15], color: 0xF0A0A0,
+              role: 'leg_back_right', uv: { u: 0, v: 16, w: 4, h: 6, d: 4 } },
         ]
     },
     cow: {
@@ -100,19 +107,21 @@ export const MOB_TYPES = {
         height: 1.3,
         texture: `${TEX_BASE}/cow/cow.png`,
         textureSize: [64, 32],
+        ambientSound: 'cow',
+        drops: [352], // leather
         boxes: [
             { offset: [0, 0.65, 0], size: [0.7, 0.6, 1.0], color: 0x6B3A1F,
-              uv: { u: 18, v: 4, w: 12, h: 10, d: 10 } },      // body
+              role: 'body', uv: { u: 18, v: 4, w: 12, h: 10, d: 10 } },
             { offset: [0, 0.9, 0.6], size: [0.5, 0.45, 0.45], color: 0x6B3A1F,
-              uv: { u: 0, v: 0, w: 8, h: 8, d: 6 } },          // head
-            { offset: [-0.25, 0.15, -0.3], size: [0.2, 0.5, 0.2], color: 0x6B3A1F,
-              uv: { u: 0, v: 16, w: 4, h: 12, d: 4 } },        // leg FL
-            { offset: [0.25, 0.15, -0.3], size: [0.2, 0.5, 0.2], color: 0x6B3A1F,
-              uv: { u: 0, v: 16, w: 4, h: 12, d: 4 } },        // leg FR
+              role: 'head', uv: { u: 0, v: 0, w: 8, h: 8, d: 6 } },
             { offset: [-0.25, 0.15, 0.3], size: [0.2, 0.5, 0.2], color: 0x6B3A1F,
-              uv: { u: 0, v: 16, w: 4, h: 12, d: 4 } },        // leg BL
+              role: 'leg_front_left', uv: { u: 0, v: 16, w: 4, h: 12, d: 4 } },
             { offset: [0.25, 0.15, 0.3], size: [0.2, 0.5, 0.2], color: 0x6B3A1F,
-              uv: { u: 0, v: 16, w: 4, h: 12, d: 4 } },        // leg BR
+              role: 'leg_front_right', uv: { u: 0, v: 16, w: 4, h: 12, d: 4 } },
+            { offset: [-0.25, 0.15, -0.3], size: [0.2, 0.5, 0.2], color: 0x6B3A1F,
+              role: 'leg_back_left', uv: { u: 0, v: 16, w: 4, h: 12, d: 4 } },
+            { offset: [0.25, 0.15, -0.3], size: [0.2, 0.5, 0.2], color: 0x6B3A1F,
+              role: 'leg_back_right', uv: { u: 0, v: 16, w: 4, h: 12, d: 4 } },
         ]
     },
     ryan_smith: {
@@ -131,12 +140,18 @@ export const MOB_TYPES = {
         spawnWeight: 1,
         drops: [32],
         boxes: [
-            { offset: [0, 0.9, 0], size: [0.5, 0.7, 0.3], color: 0xD2B48C },    // body
-            { offset: [0, 1.55, 0], size: [0.4, 0.4, 0.4], color: 0xFFDBAC },    // head
-            { offset: [-0.35, 0.9, 0], size: [0.2, 0.6, 0.2], color: 0xD2B48C }, // left arm
-            { offset: [0.35, 0.9, 0], size: [0.2, 0.6, 0.2], color: 0xD2B48C },  // right arm
-            { offset: [-0.15, 0.15, 0], size: [0.2, 0.7, 0.2], color: 0x3B5998 }, // left leg
-            { offset: [0.15, 0.15, 0], size: [0.2, 0.7, 0.2], color: 0x3B5998 },  // right leg
+            { offset: [0, 0.9, 0], size: [0.5, 0.7, 0.3], color: 0xD2B48C,
+              role: 'body' },
+            { offset: [0, 1.55, 0], size: [0.4, 0.4, 0.4], color: 0xFFDBAC,
+              role: 'head' },
+            { offset: [-0.35, 0.9, 0], size: [0.2, 0.6, 0.2], color: 0xD2B48C,
+              role: 'arm_right' },
+            { offset: [0.35, 0.9, 0], size: [0.2, 0.6, 0.2], color: 0xD2B48C,
+              role: 'arm_left' },
+            { offset: [-0.15, 0.15, 0], size: [0.2, 0.7, 0.2], color: 0x3B5998,
+              role: 'leg_right' },
+            { offset: [0.15, 0.15, 0], size: [0.2, 0.7, 0.2], color: 0x3B5998,
+              role: 'leg_left' },
         ]
     }
 };
